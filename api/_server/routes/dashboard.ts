@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, employeesTable, newslettersTable, emailLogsTable } from "../../_lib/db/index.js";
+import { db, employeesTable, newslettersTable, emailLogsTable, adminsTable } from "../../_lib/db/index.js";
 import { count, eq, desc, sql } from "drizzle-orm";
 import { requireAuth } from "../middlewares/requireAuth.js";
 
@@ -12,6 +12,9 @@ router.get("/dashboard/stats", requireAuth, async (req, res): Promise<void> => {
       [{ count: totalNewsletters }],
       [{ count: totalEmailsSent }],
       [{ count: totalEmailsFailed }],
+      [{ count: totalEmailsPending }],
+      [{ count: totalActiveAdmins }],
+      topicBreakdownRaw,
       recentNewsletters,
       recentFailedDeliveries,
     ] = await Promise.all([
@@ -19,6 +22,13 @@ router.get("/dashboard/stats", requireAuth, async (req, res): Promise<void> => {
       db.select({ count: count() }).from(newslettersTable),
       db.select({ count: count() }).from(emailLogsTable).where(eq(emailLogsTable.deliveryStatus, "sent")),
       db.select({ count: count() }).from(emailLogsTable).where(eq(emailLogsTable.deliveryStatus, "failed")),
+      db.select({ count: count() }).from(emailLogsTable).where(eq(emailLogsTable.deliveryStatus, "pending")),
+      db.select({ count: count() }).from(adminsTable).where(eq(adminsTable.isActive, true)),
+      db
+        .select({ topic: newslettersTable.topic, count: sql<number>`cast(count(*) as int)` })
+        .from(newslettersTable)
+        .groupBy(newslettersTable.topic)
+        .orderBy(desc(sql`count(*)`)),
       db
         .select({
           id: newslettersTable.id,
@@ -54,15 +64,30 @@ router.get("/dashboard/stats", requireAuth, async (req, res): Promise<void> => {
 
     const sent = Number(totalEmailsSent);
     const failed = Number(totalEmailsFailed);
+    const pending = Number(totalEmailsPending);
     const total = sent + failed;
     const deliveryRate = total > 0 ? Math.round((sent / total) * 100) : 0;
+
+    // Collapse the long tail of one-off topics into "Other" so the pie chart
+    // stays readable — the top 5 topics plus a single bucket for the rest.
+    const TOP_TOPIC_LIMIT = 5;
+    const sortedTopics = topicBreakdownRaw
+      .map((row) => ({ topic: row.topic, count: Number(row.count) }))
+      .sort((a, b) => b.count - a.count);
+    const topTopics = sortedTopics.slice(0, TOP_TOPIC_LIMIT);
+    const otherTopicsCount = sortedTopics.slice(TOP_TOPIC_LIMIT).reduce((sum, t) => sum + t.count, 0);
+    const topicBreakdown =
+      otherTopicsCount > 0 ? [...topTopics, { topic: "Other", count: otherTopicsCount }] : topTopics;
 
     res.json({
       totalEmployees: Number(totalEmployees),
       totalNewsletters: Number(totalNewsletters),
       totalEmailsSent: sent,
       totalEmailsFailed: failed,
+      totalEmailsPending: pending,
+      totalActiveAdmins: Number(totalActiveAdmins),
       deliveryRate,
+      topicBreakdown,
       recentNewsletters,
       recentFailedDeliveries,
     });

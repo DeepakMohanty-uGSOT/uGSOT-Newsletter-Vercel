@@ -3,12 +3,71 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Users, FileText, Send, AlertCircle, BarChart3, UserPlus, PlusCircle, Inbox, CheckCircle2 } from "lucide-react";
+import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
+import { Pie, PieChart, Cell } from "recharts";
+import { Users, FileText, Send, UserPlus, PlusCircle, CheckCircle2, ShieldCheck, Gauge, XCircle, Clock3 } from "lucide-react";
 import { format } from "date-fns";
 import { Link } from "wouter";
 
+function DeliveryRateGauge({
+  sent,
+  failed,
+  pending,
+  rate,
+}: {
+  sent: number;
+  failed: number;
+  pending: number;
+  rate: number;
+}) {
+  const data = [
+    { name: "Delivered", value: sent },
+    { name: "Not delivered", value: failed + pending },
+  ].filter((d) => d.value > 0);
+  const colors = ["hsl(var(--chart-1))", "hsl(0 0% 20%)"];
+
+  return (
+    <div className="flex flex-col items-center gap-6 sm:flex-row sm:items-center">
+      <div className="relative h-[160px] w-[160px] flex-shrink-0">
+        <ChartContainer config={{} satisfies ChartConfig} className="h-full w-full">
+          <PieChart>
+            <ChartTooltip content={<ChartTooltipContent hideLabel />} />
+            <Pie data={data} dataKey="value" nameKey="name" innerRadius={54} outerRadius={78} paddingAngle={2} strokeWidth={0}>
+              {data.map((entry, i) => (
+                <Cell key={entry.name} fill={colors[i % colors.length]} />
+              ))}
+            </Pie>
+          </PieChart>
+        </ChartContainer>
+        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+          <span className="text-2xl font-bold tracking-tight">{rate.toFixed(1)}%</span>
+          <span className="text-[10px] text-muted-foreground">delivered</span>
+        </div>
+      </div>
+      <div className="grid w-full grid-cols-2 gap-4 sm:max-w-xs">
+        <div className="rounded-lg border p-3">
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <XCircle className="h-3.5 w-3.5 text-destructive" />
+            Failed
+          </div>
+          <div className="mt-1 text-xl font-semibold">{failed}</div>
+        </div>
+        <div className="rounded-lg border p-3">
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Clock3 className="h-3.5 w-3.5" />
+            Pending
+          </div>
+          <div className="mt-1 text-xl font-semibold">{pending}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const { data: stats, isLoading } = useGetDashboardStats({ query: { queryKey: getGetDashboardStatsQueryKey() } });
+
+  const totalEmails = (stats?.totalEmailsSent ?? 0) + (stats?.totalEmailsFailed ?? 0) + (stats?.totalEmailsPending ?? 0);
 
   return (
     <AppLayout>
@@ -30,19 +89,13 @@ export default function Dashboard() {
               Add Employee
             </Link>
           </Button>
-          <Button asChild variant="outline" size="sm">
-            <Link href="/email-logs">
-              <Inbox className="h-4 w-4 mr-2" />
-              Email Logs
-            </Link>
-          </Button>
         </div>
       </div>
 
       {isLoading ? (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-8">
           {[1, 2, 3, 4].map((i) => (
-            <Card key={i}>
+            <Card key={i} className="rounded-xl shadow-sm">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <Skeleton className="h-4 w-[100px]" />
                 <Skeleton className="h-9 w-9 rounded-lg" />
@@ -55,10 +108,10 @@ export default function Dashboard() {
         </div>
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-8">
-          <Card>
+          <Card className="rounded-xl shadow-sm hover:shadow-md transition-shadow">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">Total Employees</CardTitle>
-              <div className="flex h-8 w-8 items-center justify-center rounded-md bg-muted text-muted-foreground">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted text-muted-foreground">
                 <Users className="h-4 w-4" />
               </div>
             </CardHeader>
@@ -66,10 +119,10 @@ export default function Dashboard() {
               <div className="text-2xl font-bold tracking-tight">{stats?.totalEmployees || 0}</div>
             </CardContent>
           </Card>
-          <Card>
+          <Card className="rounded-xl shadow-sm hover:shadow-md transition-shadow">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">Total Newsletters</CardTitle>
-              <div className="flex h-8 w-8 items-center justify-center rounded-md bg-muted text-muted-foreground">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted text-muted-foreground">
                 <FileText className="h-4 w-4" />
               </div>
             </CardHeader>
@@ -77,10 +130,10 @@ export default function Dashboard() {
               <div className="text-2xl font-bold tracking-tight">{stats?.totalNewsletters || 0}</div>
             </CardContent>
           </Card>
-          <Card>
+          <Card className="rounded-xl shadow-sm hover:shadow-md transition-shadow">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">Emails Sent</CardTitle>
-              <div className="flex h-8 w-8 items-center justify-center rounded-md bg-muted text-muted-foreground">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted text-muted-foreground">
                 <Send className="h-4 w-4" />
               </div>
             </CardHeader>
@@ -88,28 +141,48 @@ export default function Dashboard() {
               <div className="text-2xl font-bold tracking-tight">{stats?.totalEmailsSent || 0}</div>
             </CardContent>
           </Card>
-          <Card>
+          <Card className="rounded-xl shadow-sm hover:shadow-md transition-shadow">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Delivery Rate</CardTitle>
-              <div className="flex h-8 w-8 items-center justify-center rounded-md bg-muted text-muted-foreground">
-                <BarChart3 className="h-4 w-4" />
+              <CardTitle className="text-sm font-medium text-muted-foreground">Active Admins</CardTitle>
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+                <ShieldCheck className="h-4 w-4" />
               </div>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold tracking-tight">{stats?.deliveryRate.toFixed(1) || "0.0"}%</div>
-              {stats?.totalEmailsFailed ? (
-                <p className="text-xs text-muted-foreground mt-1 flex items-center">
-                  <AlertCircle className="h-3 w-3 mr-1 text-destructive" />
-                  {stats.totalEmailsFailed} failed
-                </p>
-              ) : null}
+              <div className="text-2xl font-bold tracking-tight">{stats?.totalActiveAdmins || 0}</div>
             </CardContent>
           </Card>
         </div>
       )}
 
+      <Card className="rounded-xl shadow-sm mb-8">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Gauge className="h-4 w-4 text-muted-foreground" />
+            Delivery Rate
+          </CardTitle>
+          <CardDescription>How reliably emails are reaching employees, and what still needs attention.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <Skeleton className="h-[160px] w-full max-w-lg rounded-lg" />
+          ) : totalEmails === 0 ? (
+            <div className="h-[120px] flex items-center justify-center text-sm text-muted-foreground">
+              No emails sent yet.
+            </div>
+          ) : (
+            <DeliveryRateGauge
+              sent={stats?.totalEmailsSent ?? 0}
+              failed={stats?.totalEmailsFailed ?? 0}
+              pending={stats?.totalEmailsPending ?? 0}
+              rate={stats?.deliveryRate ?? 0}
+            />
+          )}
+        </CardContent>
+      </Card>
+
       <div className="grid gap-4 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
+        <Card className="lg:col-span-2 rounded-xl shadow-sm">
           <CardHeader>
             <CardTitle>Recent Newsletters</CardTitle>
             <CardDescription>
@@ -130,7 +203,7 @@ export default function Dashboard() {
             ) : (
               <div className="space-y-4">
                 {stats.recentNewsletters.map((newsletter) => (
-                  <div key={newsletter.id} className="flex items-center justify-between p-4 border rounded-lg bg-card">
+                  <div key={newsletter.id} className="flex items-center justify-between p-4 border rounded-xl bg-card hover:shadow-sm transition-shadow">
                     <div className="grid gap-1">
                       <Link href={`/newsletters/${newsletter.id}`} className="font-semibold hover:underline">
                         {newsletter.title}
@@ -161,7 +234,7 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="rounded-xl shadow-sm">
           <CardHeader>
             <CardTitle>Recent Failed Deliveries</CardTitle>
             <CardDescription>
@@ -183,7 +256,7 @@ export default function Dashboard() {
             ) : (
               <div className="space-y-3">
                 {stats.recentFailedDeliveries.map((log) => (
-                  <div key={log.id} className="border rounded-lg p-3">
+                  <div key={log.id} className="border rounded-xl p-3">
                     <div className="text-sm font-medium truncate">{log.employeeEmail}</div>
                     <div className="text-xs text-muted-foreground truncate mt-0.5">
                       {log.newsletterTitle || `Newsletter #${log.newsletterId}`}

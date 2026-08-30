@@ -13,7 +13,10 @@ export interface DashboardStats {
   totalNewsletters: number;
   totalEmailsSent: number;
   totalEmailsFailed: number;
+  totalEmailsPending: number;
+  totalActiveAdmins: number;
   deliveryRate: number;
+  topicBreakdown: { topic: string; count: number }[];
   recentNewsletters: Newsletter[];
   recentFailedDeliveries: EmailLog[];
 }
