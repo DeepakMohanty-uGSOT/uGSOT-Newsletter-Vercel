@@ -1,4 +1,4 @@
-import { pgTable, serial, text, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, timestamp, integer } from "drizzle-orm/pg-core";
 import { z } from "zod";
 
 export const newslettersTable = pgTable("newsletters", {
@@ -7,6 +7,7 @@ export const newslettersTable = pgTable("newsletters", {
   topic: text("topic").notNull(),
   description: text("description"),
   pdfUrl: text("pdf_url").notNull(),
+  themeId: integer("theme_id"),
   uploadedAt: timestamp("uploaded_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -18,6 +19,7 @@ export const insertNewsletterSchema = z.object({
   topic: z.string(),
   description: z.string().nullable().optional(),
   pdfUrl: z.string(),
+  themeId: z.number().nullable().optional(),
 });
 export type InsertNewsletter = z.infer<typeof insertNewsletterSchema>;
 export type Newsletter = typeof newslettersTable.$inferSelect;

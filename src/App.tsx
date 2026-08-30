@@ -13,6 +13,7 @@ import NewsletterDetail from "./pages/NewsletterDetail";
 import EmailLogs from "./pages/EmailLogs";
 import ChangePassword from "./pages/ChangePassword";
 import Users from "./pages/Users";
+import Themes from "./pages/Themes";
 
 const queryClient = new QueryClient();
 
@@ -27,6 +28,7 @@ function Router() {
       <Route path="/employees" component={Employees} />
       <Route path="/newsletters" component={Newsletters} />
       <Route path="/newsletters/:id" component={NewsletterDetail} />
+      <Route path="/themes" component={Themes} />
       <Route path="/email-logs" component={EmailLogs} />
       <Route path="/settings" component={Settings} />
       <Route component={NotFound} />

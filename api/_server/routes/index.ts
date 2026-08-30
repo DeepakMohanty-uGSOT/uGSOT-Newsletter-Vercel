@@ -6,6 +6,7 @@ import newslettersRouter from "./newsletters.js";
 import emailLogsRouter from "./emailLogs.js";
 import dashboardRouter from "./dashboard.js";
 import adminsRouter from "./admins.js";
+import themesRouter from "./themes.js";
 
 const router: IRouter = Router();
 
@@ -16,5 +17,6 @@ router.use(newslettersRouter);
 router.use(emailLogsRouter);
 router.use(dashboardRouter);
 router.use(adminsRouter);
+router.use(themesRouter);
 
 export default router;

@@ -44,7 +44,7 @@ export function useUploadNewsletter() {
   const [isUploading, setIsUploading] = useState(false);
   const queryClient = useQueryClient();
 
-  const uploadNewsletter = async (params: { title: string; topic: string; description?: string; pdf: File }) => {
+  const uploadNewsletter = async (params: { title: string; topic: string; description?: string; pdf: File; themeId?: number | null }) => {
     setIsUploading(true);
     try {
       const formData = new FormData();
@@ -52,6 +52,9 @@ export function useUploadNewsletter() {
       formData.append("topic", params.topic);
       if (params.description) {
         formData.append("description", params.description);
+      }
+      if (params.themeId != null) {
+        formData.append("themeId", String(params.themeId));
       }
       formData.append("pdf", params.pdf);
 

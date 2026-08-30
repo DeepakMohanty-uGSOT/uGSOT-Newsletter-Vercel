@@ -25,6 +25,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useUploadNewsletter } from "@/hooks/use-upload";
+import { useListThemes } from "@/lib/themeApi";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 async function fetchAllFailedEmails(newsletterId: number): Promise<string[]> {
   const emails = new Set<string>();
@@ -72,6 +74,8 @@ export default function Newsletters() {
 
   const [uploadOpen, setUploadOpen] = useState(false);
   const [uploadData, setUploadData] = useState({ title: "", topic: "", description: "" });
+  const [uploadThemeId, setUploadThemeId] = useState<string>("");
+  const { data: themesData } = useListThemes();
   const [uploadFile, setUploadFile] = useState<File | null>(null);
 
   // Support deep-linking straight into the "New Newsletter" dialog, e.g.
@@ -200,12 +204,14 @@ export default function Newsletters() {
         topic: uploadData.topic,
         description: uploadData.description,
         pdf: uploadFile,
+        themeId: uploadThemeId ? Number(uploadThemeId) : null,
       });
       
       toast({ title: "Newsletter uploaded successfully" });
       setUploadOpen(false);
       setUploadData({ title: "", topic: "", description: "" });
       setUploadFile(null);
+      setUploadThemeId("");
     } catch (error) {
       toast({
         variant: "destructive",
@@ -262,6 +268,21 @@ export default function Newsletters() {
                   value={uploadData.description} 
                   onChange={(e) => setUploadData({ ...uploadData, description: e.target.value })} 
                 />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="theme">Email Theme</Label>
+                <Select value={uploadThemeId} onValueChange={setUploadThemeId}>
+                  <SelectTrigger id="theme">
+                    <SelectValue placeholder="Use active theme (default)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {themesData?.themes.map((theme) => (
+                      <SelectItem key={theme.id} value={String(theme.id)}>
+                        {theme.name}{theme.isActive ? " (Active)" : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="pdf">PDF File *</Label>

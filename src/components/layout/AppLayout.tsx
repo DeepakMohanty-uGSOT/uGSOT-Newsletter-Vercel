@@ -1,6 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { useGetMe, getGetMeQueryKey, useLogout } from "@/lib/api-client";
-import { LayoutDashboard, Users, Mail, Settings, LogOut, FileText, GraduationCap, Loader2, ShieldCheck } from "lucide-react";
+import { LayoutDashboard, Users, Mail, Settings, LogOut, FileText, GraduationCap, Loader2, ShieldCheck, Palette } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Sidebar,
@@ -24,6 +24,7 @@ const baseMenuItems = [
   { title: "Dashboard", icon: LayoutDashboard, url: "/dashboard" },
   { title: "Employees", icon: Users, url: "/employees" },
   { title: "Newsletters", icon: FileText, url: "/newsletters" },
+  { title: "Themes", icon: Palette, url: "/themes" },
   { title: "Email Logs", icon: Mail, url: "/email-logs" },
   { title: "Settings", icon: Settings, url: "/settings" },
 ];

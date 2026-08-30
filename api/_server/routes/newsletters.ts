@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import multer from "multer";
 import { createClient } from "@supabase/supabase-js";
-import { db, newslettersTable, employeesTable, emailLogsTable } from "../../_lib/db/index.js";
+import { db, newslettersTable, employeesTable, emailLogsTable, themesTable } from "../../_lib/db/index.js";
 import { eq, count, sql, desc } from "drizzle-orm";
 import { requireAuth } from "../middlewares/requireAuth.js";
 import { logger } from "../lib/logger.js";
@@ -64,14 +64,53 @@ async function downloadPdfBuffer(storagePath: string): Promise<Buffer> {
 }
 
 // ---------------------------------------------------------------------------
+// Theme resolution
+// ---------------------------------------------------------------------------
+
+// Hardcoded fallback matching the original look, used only if the themes
+// table hasn't been migrated/seeded yet (see sql/002_create_themes_table.sql).
+const FALLBACK_THEME = {
+  headerGradientStart: "#c8102e",
+  headerGradientEnd: "#e63946",
+  accentColor: "#c8102e",
+  footerColor: "#c8102e",
+  bannerEmoji: null as string | null,
+  greetingText: null as string | null,
+};
+
+async function getThemeForNewsletter(themeId: number | null) {
+  if (themeId) {
+    const [byId] = await db.select().from(themesTable).where(eq(themesTable.id, themeId));
+    if (byId) return byId;
+  }
+  const [active] = await db.select().from(themesTable).where(eq(themesTable.isActive, true));
+  return active ?? FALLBACK_THEME;
+}
+
+// ---------------------------------------------------------------------------
 // Email HTML builder
 // ---------------------------------------------------------------------------
 
 function buildEmailHtml(
   employeeName: string,
   employeeEmail: string,
-  newsletter: { title: string; topic: string; description: string | null }
+  newsletter: { title: string; topic: string; description: string | null },
+  theme: {
+    headerGradientStart: string;
+    headerGradientEnd: string;
+    accentColor: string;
+    footerColor: string;
+    bannerEmoji: string | null;
+    greetingText: string | null;
+  }
 ): string {
+  const bannerHtml = theme.bannerEmoji
+    ? `<div style="font-size:32px; line-height:1; margin-bottom:8px;">${theme.bannerEmoji}</div>`
+    : "";
+  const greetingHtml = theme.greetingText
+    ? `<p style="font-weight:600;">${theme.greetingText}</p>`
+    : "";
+
   return `
 
 <!DOCTYPE html>
@@ -99,7 +138,7 @@ function buildEmailHtml(
     }
 
     .header {
-      background: linear-gradient(135deg, #c8102e, #e63946);
+      background: linear-gradient(135deg, ${theme.headerGradientStart}, ${theme.headerGradientEnd});
       color: #ffffff;
       padding: 36px 40px;
       text-align: center;
@@ -131,7 +170,7 @@ function buildEmailHtml(
 
     .highlight {
       background: #fff5f5;
-      border-left: 5px solid #c8102e;
+      border-left: 5px solid ${theme.accentColor};
       padding: 24px;
       margin: 28px 0;
       border-radius: 8px;
@@ -139,7 +178,7 @@ function buildEmailHtml(
 
     .highlight strong {
       display: block;
-      color: #c8102e;
+      color: ${theme.accentColor};
       font-size: 20px;
       margin-bottom: 10px;
     }
@@ -170,7 +209,7 @@ function buildEmailHtml(
     }
 
     .footer {
-      background: #c8102e;
+      background: ${theme.footerColor};
       color: rgba(255,255,255,0.85);
       padding: 22px 30px;
       text-align: center;
@@ -214,6 +253,7 @@ function buildEmailHtml(
   <div class="container">
 
     <div class="header">
+      ${bannerHtml}
       <h1>uGSOT Newsletter</h1>
       <p>upGrad School Of Technology</p>
     </div>
@@ -221,6 +261,8 @@ function buildEmailHtml(
     <div class="body">
 
       <p>Dear ${employeeName},</p>
+
+      ${greetingHtml}
 
       <p>
         We hope you are doing well.
@@ -307,6 +349,14 @@ interface ResendEmailPayload {
 async function sendNewsletterEmails(
   newsletterId: number,
   newsletter: { title: string; topic: string; description: string | null; pdfUrl: string },
+  theme: {
+    headerGradientStart: string;
+    headerGradientEnd: string;
+    accentColor: string;
+    footerColor: string;
+    bannerEmoji: string | null;
+    greetingText: string | null;
+  },
   customEmails?: string[]
 ): Promise<{ sent: number; failed: number }> {
   const RESEND_API_KEY = process.env.RESEND_API_KEY ?? "";
@@ -378,7 +428,7 @@ async function sendNewsletterEmails(
         from: FROM_EMAIL,
         to: [recipient.employeeEmail],
         subject: `uGSOT Newsletter | ${newsletter.topic}`,
-        html: buildEmailHtml(recipient.employeeName, recipient.employeeEmail, newsletter),
+        html: buildEmailHtml(recipient.employeeName, recipient.employeeEmail, newsletter, theme),
         // Only spread attachments when the PDF was successfully downloaded
         ...(pdfAttachment ? { attachments: [pdfAttachment] } : {}),
       };
@@ -481,6 +531,7 @@ router.get("/newsletters", requireAuth, async (req, res): Promise<void> => {
           topic: newslettersTable.topic,
           description: newslettersTable.description,
           pdfUrl: newslettersTable.pdfUrl,
+          themeId: newslettersTable.themeId,
           uploadedAt: newslettersTable.uploadedAt,
           totalSent: sql<number>`cast(count(case when ${emailLogsTable.deliveryStatus} = 'sent' then 1 end) as int)`,
           totalFailed: sql<number>`cast(count(case when ${emailLogsTable.deliveryStatus} = 'failed' then 1 end) as int)`,
@@ -502,7 +553,7 @@ router.get("/newsletters", requireAuth, async (req, res): Promise<void> => {
 });
 
 router.post("/newsletters/upload", requireAuth, upload.single("pdf"), async (req, res): Promise<void> => {
-  const { title, topic, description } = req.body as Record<string, string>;
+  const { title, topic, description, themeId: themeIdRaw } = req.body as Record<string, string>;
 
   if (!title || !topic) {
     res.status(400).json({ error: "Title and topic are required" });
@@ -526,9 +577,20 @@ router.post("/newsletters/upload", requireAuth, upload.single("pdf"), async (req
     return;
   }
 
+  let themeId: number | null = themeIdRaw ? parseInt(themeIdRaw, 10) : null;
+  if (themeId && isNaN(themeId)) themeId = null;
+  if (themeId) {
+    const [themeExists] = await db.select({ id: themesTable.id }).from(themesTable).where(eq(themesTable.id, themeId));
+    if (!themeExists) themeId = null;
+  }
+  if (!themeId) {
+    const [active] = await db.select({ id: themesTable.id }).from(themesTable).where(eq(themesTable.isActive, true));
+    themeId = active?.id ?? null;
+  }
+
   const [newsletter] = await db
     .insert(newslettersTable)
-    .values({ title, topic, description: description || null, pdfUrl })
+    .values({ title, topic, description: description || null, pdfUrl, themeId })
     .returning();
 
   req.log.info({ newsletterId: newsletter.id }, "Newsletter created");
@@ -547,6 +609,7 @@ router.get("/newsletters/:id", requireAuth, async (req, res): Promise<void> => {
       topic: newslettersTable.topic,
       description: newslettersTable.description,
       pdfUrl: newslettersTable.pdfUrl,
+      themeId: newslettersTable.themeId,
       uploadedAt: newslettersTable.uploadedAt,
       totalSent: sql<number>`cast(count(case when ${emailLogsTable.deliveryStatus} = 'sent' then 1 end) as int)`,
       totalFailed: sql<number>`cast(count(case when ${emailLogsTable.deliveryStatus} = 'failed' then 1 end) as int)`,
@@ -599,10 +662,26 @@ router.post("/newsletters/:id/send", requireAuth, async (req, res): Promise<void
     req.log.info({ newsletterId: id, employees: total }, "Starting newsletter send to all employees");
   }
 
-  const { sent, failed } = await sendNewsletterEmails(id, newsletter, cleanEmails);
+  const theme = await getThemeForNewsletter(newsletter.themeId);
+  const { sent, failed } = await sendNewsletterEmails(id, newsletter, theme, cleanEmails);
   req.log.info({ newsletterId: id, sent, failed }, "Newsletter send complete");
 
   res.json({ sent, failed, total });
+});
+
+// Renders the exact HTML a recipient would get, without sending anything —
+// lets you check a theme looks right before emailing 100+ people.
+router.get("/newsletters/:id/preview", requireAuth, async (req, res): Promise<void> => {
+  const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const id = parseInt(raw, 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
+
+  const [newsletter] = await db.select().from(newslettersTable).where(eq(newslettersTable.id, id));
+  if (!newsletter) { res.status(404).json({ error: "Newsletter not found" }); return; }
+
+  const theme = await getThemeForNewsletter(newsletter.themeId);
+  const html = buildEmailHtml("Employee Name", "employee@example.com", newsletter, theme);
+  res.json({ html });
 });
 
 router.get("/newsletters/:id/pdf", requireAuth, async (req, res): Promise<void> => {

@@ -7,13 +7,17 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
-import { ChevronLeft, Download, FileText, BarChart3, Clock, AlertCircle } from "lucide-react";
+import { ChevronLeft, Download, FileText, BarChart3, Clock, AlertCircle, Eye } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { usePreviewNewsletter } from "@/lib/themeApi";
 import { format } from "date-fns";
 
 export default function NewsletterDetail() {
   const params = useParams();
   const id = parseInt(params.id || "0", 10);
   const [page, setPage] = useState(1);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const { data: previewData, isLoading: isPreviewLoading } = usePreviewNewsletter(previewOpen ? id : null);
 
   const { data: newsletter, isLoading: isNewsletterLoading } = useGetNewsletter(id, {
     query: { queryKey: getGetNewsletterQueryKey(id), enabled: !!id }
@@ -76,7 +80,11 @@ export default function NewsletterDetail() {
               <p className="mt-4 max-w-3xl">{newsletter.description}</p>
             )}
           </div>
-          <div>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setPreviewOpen(true)}>
+              <Eye className="mr-2 h-4 w-4" />
+              Preview Email
+            </Button>
             <Button asChild variant="outline">
               <a href={`/api/newsletters/${newsletter.id}/pdf`} target="_blank" rel="noopener noreferrer">
                 <Download className="mr-2 h-4 w-4" />
@@ -86,6 +94,29 @@ export default function NewsletterDetail() {
           </div>
         </div>
       </div>
+
+      <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Email Preview</DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 overflow-auto border rounded-md bg-white">
+            {isPreviewLoading ? (
+              <div className="p-8">
+                <Skeleton className="h-64 w-full" />
+              </div>
+            ) : previewData?.html ? (
+              <iframe
+                title="Email preview"
+                srcDoc={previewData.html}
+                className="w-full h-[65vh] border-0"
+              />
+            ) : (
+              <p className="p-8 text-muted-foreground text-sm">No preview available.</p>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <div className="grid gap-4 md:grid-cols-3 mb-8">
         <Card>
