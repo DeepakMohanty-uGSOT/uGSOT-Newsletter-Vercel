@@ -1,0 +1,18 @@
+import { Router, type IRouter } from "express";
+import healthRouter from "./health.js";
+import authRouter from "./auth.js";
+import employeesRouter from "./employees.js";
+import newslettersRouter from "./newsletters.js";
+import emailLogsRouter from "./emailLogs.js";
+import dashboardRouter from "./dashboard.js";
+
+const router: IRouter = Router();
+
+router.use(healthRouter);
+router.use(authRouter);
+router.use(employeesRouter);
+router.use(newslettersRouter);
+router.use(emailLogsRouter);
+router.use(dashboardRouter);
+
+export default router;

@@ -1,0 +1,33 @@
+# dependencies
+node_modules
+
+# environment variables — NEVER commit secrets
+.env
+.env.local
+.env.*.local
+
+# compiled output
+dist
+tmp
+*.tsbuildinfo
+
+# Vercel
+.vercel
+
+# IDEs and editors
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+/.idea
+*.sublime-workspace
+
+# misc
+/coverage
+npm-debug.log
+yarn-error.log
+
+# System files
+.DS_Store
+Thumbs.db
