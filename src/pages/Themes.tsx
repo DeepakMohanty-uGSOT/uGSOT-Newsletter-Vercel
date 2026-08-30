@@ -29,6 +29,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
+import { useGetMe, getGetMeQueryKey } from "@/lib/api-client";
 import {
   useListThemes,
   useCreateTheme,
@@ -37,32 +38,15 @@ import {
   useDeleteTheme,
   type ThemeRecord,
 } from "@/lib/themeApi";
-import { Plus, Loader2, CheckCircle2, MoreVertical, Pencil } from "lucide-react";
+import { Plus, Loader2, CheckCircle2, MoreVertical, Pencil, ShieldCheck } from "lucide-react";
 import { format } from "date-fns";
 
 const themeSchema = z.object({
   name: z.string().min(1, "Name is required"),
-  headerGradientStart: z.string().min(1, "Required").regex(/^#([0-9a-fA-F]{6})$/, "Use a hex color like #1d4ed8"),
-  headerGradientEnd: z.string().min(1, "Required").regex(/^#([0-9a-fA-F]{6})$/, "Use a hex color like #1d4ed8"),
-  accentColor: z.string().min(1, "Required").regex(/^#([0-9a-fA-F]{6})$/, "Use a hex color like #1d4ed8"),
-  footerColor: z.string().min(1, "Required").regex(/^#([0-9a-fA-F]{6})$/, "Use a hex color like #1d4ed8"),
-  bannerEmoji: z.string().optional(),
-  greetingText: z.string().optional(),
-  customHtml: z.string().optional(),
+  customHtml: z.string().min(1, "HTML is required"),
 });
 
 type ThemeFormValues = z.infer<typeof themeSchema>;
-
-const defaultFormValues: ThemeFormValues = {
-  name: "",
-  headerGradientStart: "#1d4ed8",
-  headerGradientEnd: "#1e40af",
-  accentColor: "#1d4ed8",
-  footerColor: "#111827",
-  bannerEmoji: "",
-  greetingText: "",
-  customHtml: "",
-};
 
 function apiErrorMessage(error: unknown): string | undefined {
   return error && typeof error === "object" && "data" in error
@@ -70,30 +54,10 @@ function apiErrorMessage(error: unknown): string | undefined {
     : undefined;
 }
 
-function ColorField({ control, name, label }: { control: any; name: keyof ThemeFormValues; label: string }) {
-  return (
-    <FormField
-      control={control}
-      name={name}
-      render={({ field }) => (
-        <FormItem>
-          <FormLabel>{label}</FormLabel>
-          <div className="flex items-center gap-2">
-            <FormControl>
-              <Input type="color" className="h-9 w-14 p-1" value={field.value || "#000000"} onChange={field.onChange} />
-            </FormControl>
-            <FormControl>
-              <Input placeholder="#1d4ed8" {...field} />
-            </FormControl>
-          </div>
-          <FormMessage />
-        </FormItem>
-      )}
-    />
-  );
-}
-
 export default function Themes() {
+  const { data: session } = useGetMe({ query: { queryKey: getGetMeQueryKey(), retry: false } });
+  const isSuperAdmin = session?.role === "super_admin";
+
   const { data, isLoading } = useListThemes();
   const createMutation = useCreateTheme();
   const updateMutation = useUpdateTheme();
@@ -107,12 +71,16 @@ export default function Themes() {
 
   const form = useForm<ThemeFormValues>({
     resolver: zodResolver(themeSchema),
-    defaultValues: defaultFormValues,
+    defaultValues: { name: "", customHtml: "" },
   });
 
   const openCreate = () => {
     setEditing(null);
-    form.reset(defaultFormValues);
+    // Start from whatever theme is currently active (or the first one
+    // available) so a new theme is an edit of real, working HTML rather
+    // than a blank page.
+    const starter = data?.themes.find((t) => t.isActive)?.customHtml ?? data?.themes[0]?.customHtml ?? "";
+    form.reset({ name: "", customHtml: starter });
     setDialogOpen(true);
   };
 
@@ -120,28 +88,15 @@ export default function Themes() {
     setEditing(theme);
     form.reset({
       name: theme.name,
-      headerGradientStart: theme.headerGradientStart,
-      headerGradientEnd: theme.headerGradientEnd,
-      accentColor: theme.accentColor,
-      footerColor: theme.footerColor,
-      bannerEmoji: theme.bannerEmoji ?? "",
-      greetingText: theme.greetingText ?? "",
+      // The API always returns real, rendered HTML for every theme (even
+      // ones saved before the HTML editor existed), so this is never blank.
       customHtml: theme.customHtml ?? "",
     });
     setDialogOpen(true);
   };
 
   const onSubmit = (values: ThemeFormValues) => {
-    const payload = {
-      name: values.name,
-      headerGradientStart: values.headerGradientStart,
-      headerGradientEnd: values.headerGradientEnd,
-      accentColor: values.accentColor,
-      footerColor: values.footerColor,
-      bannerEmoji: values.bannerEmoji || null,
-      greetingText: values.greetingText || null,
-      customHtml: values.customHtml || null,
-    };
+    const payload = { name: values.name, customHtml: values.customHtml };
 
     const onSuccess = () => {
       toast({ title: editing ? "Theme updated" : "Theme created" });
@@ -189,122 +144,82 @@ export default function Themes() {
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">Themes</h1>
             <p className="text-muted-foreground">
-              Customize the look of newsletter emails for occasions like Independence Day or Diwali — no code changes needed.
+              Customize the newsletter email's HTML directly for occasions like Independence Day or Diwali — no code
+              deploys needed.
             </p>
           </div>
-          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-            <Button onClick={openCreate} className="gap-2">
-              <Plus className="h-4 w-4" />
-              New Theme
-            </Button>
-            <DialogContent className="max-w-xl max-h-[85vh] overflow-y-auto">
-              <DialogHeader>
-                <DialogTitle>{editing ? "Edit theme" : "Create a new theme"}</DialogTitle>
-                <DialogDescription>
-                  These colors and text are applied to the newsletter email template. Pick a theme when uploading a
-                  newsletter, or set one as active to use it by default.
-                </DialogDescription>
-              </DialogHeader>
-              <Form {...form}>
-                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                  <FormField
-                    control={form.control}
-                    name="name"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Name</FormLabel>
-                        <FormControl>
-                          <Input placeholder="Independence Day" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <div className="grid grid-cols-2 gap-4">
-                    <ColorField control={form.control} name="headerGradientStart" label="Header gradient start" />
-                    <ColorField control={form.control} name="headerGradientEnd" label="Header gradient end" />
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <ColorField control={form.control} name="accentColor" label="Accent color" />
-                    <ColorField control={form.control} name="footerColor" label="Footer color" />
-                  </div>
-                  <FormField
-                    control={form.control}
-                    name="bannerEmoji"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Banner emoji (optional)</FormLabel>
-                        <FormControl>
-                          <Input placeholder="🇮🇳" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="greetingText"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Greeting text (optional)</FormLabel>
-                        <FormControl>
-                          <Input placeholder="Happy Independence Day!" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="customHtml"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Custom HTML template (optional)</FormLabel>
-                        <FormControl>
-                          <Textarea
-                            className="font-mono text-xs min-h-[220px]"
-                            placeholder={
-                              "Leave blank to use the fields above with the default layout.\n\n" +
-                              "Or paste a full HTML email here to take complete control of the design. " +
-                              "Available placeholders, replaced per recipient at send time:\n" +
-                              "{{name}}  {{email}}  {{title}}  {{topic}}  {{description}}"
-                            }
-                            {...field}
-                          />
-                        </FormControl>
-                        <p className="text-xs text-muted-foreground">
-                          When this is filled in, it completely replaces the default template (colors above are
-                          then ignored) — use {"{{name}}"}, {"{{email}}"}, {"{{title}}"}, {"{{topic}}"}, and{" "}
-                          {"{{description}}"} anywhere you want that value inserted.
-                        </p>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <DialogFooter>
-                    <Button type="submit" disabled={isSaving}>
-                      {isSaving ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Saving...
-                        </>
-                      ) : editing ? (
-                        "Save changes"
-                      ) : (
-                        "Create Theme"
+          {isSuperAdmin && (
+            <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+              <Button onClick={openCreate} className="gap-2">
+                <Plus className="h-4 w-4" />
+                New Theme
+              </Button>
+              <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle>{editing ? "Edit theme" : "Create a new theme"}</DialogTitle>
+                  <DialogDescription>
+                    This HTML is exactly what gets sent as the newsletter email. Edit it directly — use{" "}
+                    {"{{name}}"}, {"{{email}}"}, {"{{title}}"}, {"{{topic}}"}, and {"{{description}}"} anywhere you
+                    want that recipient's or newsletter's value inserted; they're substituted right before sending.
+                  </DialogDescription>
+                </DialogHeader>
+                <Form {...form}>
+                  <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                    <FormField
+                      control={form.control}
+                      name="name"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Name</FormLabel>
+                          <FormControl>
+                            <Input placeholder="Independence Day" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
                       )}
-                    </Button>
-                  </DialogFooter>
-                </form>
-              </Form>
-            </DialogContent>
-          </Dialog>
+                    />
+                    <FormField
+                      control={form.control}
+                      name="customHtml"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Email HTML</FormLabel>
+                          <FormControl>
+                            <Textarea className="font-mono text-xs min-h-[420px]" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <DialogFooter>
+                      <Button type="submit" disabled={isSaving}>
+                        {isSaving ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Saving...
+                          </>
+                        ) : editing ? (
+                          "Save changes"
+                        ) : (
+                          "Create Theme"
+                        )}
+                      </Button>
+                    </DialogFooter>
+                  </form>
+                </Form>
+              </DialogContent>
+            </Dialog>
+          )}
         </div>
 
         <Card>
           <CardHeader>
             <CardTitle>Email themes</CardTitle>
-            <CardDescription>The active theme is used by default when a newsletter is uploaded without a specific theme.</CardDescription>
+            <CardDescription>
+              {isSuperAdmin
+                ? "The active theme is used by default when a newsletter is uploaded without a specific theme. Only super admins can create, edit, or delete themes."
+                : "The active theme is used by default when a newsletter is uploaded without a specific theme. Ask a super admin to create or edit themes."}
+            </CardDescription>
           </CardHeader>
           <CardContent>
             {isLoading ? (
@@ -317,10 +232,9 @@ export default function Themes() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Name</TableHead>
-                    <TableHead>Preview</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Created</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
+                    {isSuperAdmin && <TableHead className="text-right">Actions</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -329,14 +243,6 @@ export default function Themes() {
                       <TableCell className="font-medium">
                         {theme.bannerEmoji ? `${theme.bannerEmoji} ` : ""}
                         {theme.name}
-                      </TableCell>
-                      <TableCell>
-                        <div
-                          className="h-6 w-24 rounded"
-                          style={{
-                            background: `linear-gradient(135deg, ${theme.headerGradientStart}, ${theme.headerGradientEnd})`,
-                          }}
-                        />
                       </TableCell>
                       <TableCell>
                         {theme.isActive ? (
@@ -349,40 +255,42 @@ export default function Themes() {
                         )}
                       </TableCell>
                       <TableCell>{format(new Date(theme.createdAt), "PP")}</TableCell>
-                      <TableCell className="text-right">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon">
-                              <MoreVertical className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => openEdit(theme)}>
-                              <Pencil className="mr-2 h-4 w-4" />
-                              Edit
-                            </DropdownMenuItem>
-                            {!theme.isActive && (
-                              <DropdownMenuItem onClick={() => handleActivate(theme)}>
-                                <CheckCircle2 className="mr-2 h-4 w-4" />
-                                Set as Active
+                      {isSuperAdmin && (
+                        <TableCell className="text-right">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon">
+                                <MoreVertical className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => openEdit(theme)}>
+                                <Pencil className="mr-2 h-4 w-4" />
+                                Edit HTML
                               </DropdownMenuItem>
-                            )}
-                            <DropdownMenuItem
-                              className="text-destructive focus:text-destructive"
-                              disabled={theme.isActive}
-                              onClick={() => setDeleteTarget(theme)}
-                            >
-                              Delete
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
+                              {!theme.isActive && (
+                                <DropdownMenuItem onClick={() => handleActivate(theme)}>
+                                  <CheckCircle2 className="mr-2 h-4 w-4" />
+                                  Set as Active
+                                </DropdownMenuItem>
+                              )}
+                              <DropdownMenuItem
+                                className="text-destructive focus:text-destructive"
+                                disabled={theme.isActive}
+                                onClick={() => setDeleteTarget(theme)}
+                              >
+                                Delete
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </TableCell>
+                      )}
                     </TableRow>
                   ))}
                   {data && data.themes.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
-                        No themes yet. Create one to get started.
+                      <TableCell colSpan={isSuperAdmin ? 4 : 3} className="text-center text-muted-foreground py-8">
+                        No themes yet. {isSuperAdmin ? "Create one to get started." : "Ask a super admin to create one."}
                       </TableCell>
                     </TableRow>
                   )}
@@ -391,6 +299,13 @@ export default function Themes() {
             )}
           </CardContent>
         </Card>
+
+        {!isSuperAdmin && (
+          <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <ShieldCheck className="h-3.5 w-3.5" />
+            Theme editing is restricted to super admins.
+          </p>
+        )}
       </div>
 
       <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>

@@ -2,15 +2,22 @@ import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
 import { db, themesTable } from "../../_lib/db/index.js";
 import { requireAuth } from "../middlewares/requireAuth.js";
+import { requireSuperAdmin } from "../middlewares/requireSuperAdmin.js";
+import { renderDefaultTemplate } from "./newsletters.js";
 
 const router: IRouter = Router();
 
 router.get("/themes", requireAuth, async (_req, res): Promise<void> => {
   const rows = await db.select().from(themesTable).orderBy(themesTable.createdAt);
-  res.json({ themes: rows });
+  // Every theme always has real, editable HTML to show in the admin UI —
+  // themes created before the custom-HTML field existed get it generated
+  // on the fly from their stored colors/banner/greeting, with the usual
+  // {{name}}/{{email}}/{{title}}/{{topic}}/{{description}} placeholders.
+  const themes = rows.map((row) => ({ ...row, customHtml: renderDefaultTemplate(row) }));
+  res.json({ themes });
 });
 
-router.post("/themes", requireAuth, async (req, res): Promise<void> => {
+router.post("/themes", requireAuth, requireSuperAdmin, async (req, res): Promise<void> => {
   const { name, headerGradientStart, headerGradientEnd, accentColor, footerColor, bannerEmoji, greetingText, customHtml } =
     req.body as {
       name?: string;
@@ -23,8 +30,8 @@ router.post("/themes", requireAuth, async (req, res): Promise<void> => {
       customHtml?: string | null;
     };
 
-  if (!name || !headerGradientStart || !headerGradientEnd || !accentColor || !footerColor) {
-    res.status(400).json({ error: "name, headerGradientStart, headerGradientEnd, accentColor, and footerColor are required" });
+  if (!name || !customHtml) {
+    res.status(400).json({ error: "name and customHtml are required" });
     return;
   }
 
@@ -38,13 +45,13 @@ router.post("/themes", requireAuth, async (req, res): Promise<void> => {
     .insert(themesTable)
     .values({
       name,
-      headerGradientStart,
-      headerGradientEnd,
-      accentColor,
-      footerColor,
+      headerGradientStart: headerGradientStart || null,
+      headerGradientEnd: headerGradientEnd || null,
+      accentColor: accentColor || null,
+      footerColor: footerColor || null,
       bannerEmoji: bannerEmoji || null,
       greetingText: greetingText || null,
-      customHtml: customHtml || null,
+      customHtml,
     })
     .returning();
 
@@ -52,7 +59,7 @@ router.post("/themes", requireAuth, async (req, res): Promise<void> => {
   res.status(201).json(created);
 });
 
-router.patch("/themes/:id", requireAuth, async (req, res): Promise<void> => {
+router.patch("/themes/:id", requireAuth, requireSuperAdmin, async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(raw, 10);
   if (isNaN(id)) {
@@ -99,7 +106,7 @@ router.patch("/themes/:id", requireAuth, async (req, res): Promise<void> => {
 
 // Marks exactly one theme active at a time — the "default" one used for a
 // newsletter that doesn't specify a theme at upload time.
-router.patch("/themes/:id/activate", requireAuth, async (req, res): Promise<void> => {
+router.patch("/themes/:id/activate", requireAuth, requireSuperAdmin, async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(raw, 10);
   if (isNaN(id)) {
@@ -120,7 +127,7 @@ router.patch("/themes/:id/activate", requireAuth, async (req, res): Promise<void
   res.json(updated);
 });
 
-router.delete("/themes/:id", requireAuth, async (req, res): Promise<void> => {
+router.delete("/themes/:id", requireAuth, requireSuperAdmin, async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(raw, 10);
   if (isNaN(id)) {

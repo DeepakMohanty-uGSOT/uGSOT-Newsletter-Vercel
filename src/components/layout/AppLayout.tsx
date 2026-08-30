@@ -24,12 +24,12 @@ const baseMenuItems = [
   { title: "Dashboard", icon: LayoutDashboard, url: "/dashboard" },
   { title: "Employees", icon: Users, url: "/employees" },
   { title: "Newsletters", icon: FileText, url: "/newsletters" },
-  { title: "Themes", icon: Palette, url: "/themes" },
   { title: "Email Logs", icon: Mail, url: "/email-logs" },
   { title: "Settings", icon: Settings, url: "/settings" },
 ];
 
 const superAdminMenuItems = [
+  { title: "Themes", icon: Palette, url: "/themes" },
   { title: "Users", icon: ShieldCheck, url: "/users" },
 ];
 

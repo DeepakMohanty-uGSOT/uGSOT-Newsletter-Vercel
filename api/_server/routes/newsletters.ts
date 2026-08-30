@@ -92,31 +92,25 @@ async function getThemeForNewsletter(themeId: number | null) {
 // Email HTML builder
 // ---------------------------------------------------------------------------
 
-function buildEmailHtml(
-  employeeName: string,
-  employeeEmail: string,
-  newsletter: { title: string; topic: string; description: string | null },
-  theme: {
-    headerGradientStart: string;
-    headerGradientEnd: string;
-    accentColor: string;
-    footerColor: string;
-    bannerEmoji: string | null;
-    greetingText: string | null;
-    customHtml?: string | null;
-  }
-): string {
-  // A theme can fully override the template with its own raw HTML. We
-  // support a small set of placeholders so the custom markup can still be
-  // personalized per recipient / per newsletter.
-  if (theme.customHtml) {
-    return theme.customHtml
-      .replaceAll("{{name}}", employeeName)
-      .replaceAll("{{email}}", employeeEmail)
-      .replaceAll("{{title}}", newsletter.title)
-      .replaceAll("{{topic}}", newsletter.topic)
-      .replaceAll("{{description}}", newsletter.description ?? "");
-  }
+export interface ThemeLike {
+  headerGradientStart: string | null;
+  headerGradientEnd: string | null;
+  accentColor: string | null;
+  footerColor: string | null;
+  bannerEmoji: string | null;
+  greetingText: string | null;
+  customHtml?: string | null;
+}
+
+// Renders the theme's own customHtml if it has one, otherwise builds the
+// original built-in layout using the theme's colors/banner/greeting — but
+// with {{name}}/{{email}}/{{title}}/{{topic}}/{{description}} left as
+// literal placeholders rather than filled in. This is the single source of
+// truth for "what does this theme's email look like", used both to render
+// the actual send (buildEmailHtml substitutes real values into it) and to
+// show/prefill the editable HTML in the Themes admin UI.
+export function renderDefaultTemplate(theme: ThemeLike): string {
+  if (theme.customHtml) return theme.customHtml;
 
   const bannerHtml = theme.bannerEmoji
     ? `<div style="font-size:32px; line-height:1; margin-bottom:8px;">${theme.bannerEmoji}</div>`
@@ -274,7 +268,7 @@ function buildEmailHtml(
 
     <div class="body">
 
-      <p>Dear ${employeeName},</p>
+      <p>Dear {{name}},</p>
 
       ${greetingHtml}
 
@@ -290,18 +284,14 @@ function buildEmailHtml(
       <div class="highlight">
 
         <strong>
-          ${newsletter.title}
+          {{title}}
         </strong>
 
         <div class="topic">
-          ${newsletter.topic}
+          {{topic}}
         </div>
 
-        ${
-          newsletter.description
-            ? `<div class="description">${newsletter.description}</div>`
-            : ""
-        }
+        <div class="description">{{description}}</div>
       </div>
 
       </div>
@@ -329,8 +319,8 @@ function buildEmailHtml(
       <strong>upGrad School Of Technology</strong>
       <br>
       This email was sent to
-      <a href="mailto:${employeeEmail}">
-        ${employeeEmail}
+      <a href="mailto:{{email}}">
+        {{email}}
       </a>
     </div>
 
@@ -338,6 +328,21 @@ function buildEmailHtml(
 </body>
 </html>
   `.trim();
+}
+
+function buildEmailHtml(
+  employeeName: string,
+  employeeEmail: string,
+  newsletter: { title: string; topic: string; description: string | null },
+  theme: ThemeLike
+): string {
+  const template = renderDefaultTemplate(theme);
+  return template
+    .replaceAll("{{name}}", employeeName)
+    .replaceAll("{{email}}", employeeEmail)
+    .replaceAll("{{title}}", newsletter.title)
+    .replaceAll("{{topic}}", newsletter.topic)
+    .replaceAll("{{description}}", newsletter.description ?? "");
 }
 
 // ---------------------------------------------------------------------------
@@ -363,14 +368,7 @@ interface ResendEmailPayload {
 async function sendNewsletterEmails(
   newsletterId: number,
   newsletter: { title: string; topic: string; description: string | null; pdfUrl: string },
-  theme: {
-    headerGradientStart: string;
-    headerGradientEnd: string;
-    accentColor: string;
-    footerColor: string;
-    bannerEmoji: string | null;
-    greetingText: string | null;
-  },
+  theme: ThemeLike,
   customEmails?: string[]
 ): Promise<{ sent: number; failed: number }> {
   const RESEND_API_KEY = process.env.RESEND_API_KEY ?? "";
