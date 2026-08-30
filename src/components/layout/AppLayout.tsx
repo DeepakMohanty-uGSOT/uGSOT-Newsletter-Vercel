@@ -128,7 +128,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       <div className="flex min-h-screen w-full bg-muted/30">
         <AppSidebar role={session.role} />
         <main className="flex-1 flex flex-col min-w-0">
-          <header className="h-16 flex items-center border-b bg-background px-4 lg:px-8 gap-4 sticky top-0 z-10">
+          <header className="h-16 flex items-center border-b border-sidebar-border bg-sidebar px-4 lg:px-8 gap-4 sticky top-0 z-10">
             <SidebarTrigger />
             <div className="ml-auto hidden sm:flex items-center gap-2.5">
               <div className="flex h-8 w-8 items-center justify-center rounded-full bg-accent text-accent-foreground text-xs font-semibold uppercase">
