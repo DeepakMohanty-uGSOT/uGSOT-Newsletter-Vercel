@@ -45,7 +45,17 @@ export default function ChangePassword() {
       { currentPassword: data.currentPassword, newPassword: data.newPassword },
       {
         onSuccess: () => {
-          queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() });
+          // Update the cached session synchronously instead of just
+          // invalidating it: invalidateQueries only marks the cache stale
+          // and refetches in the background, so there'd be a brief window
+          // where AppLayout still sees the old mustChangePassword: true,
+          // bounces back to this page, and only then does the refetch land
+          // — which reads as this screen flickering between "Set a new
+          // password" and "Change your password". Setting the data directly
+          // avoids that window entirely.
+          queryClient.setQueryData(getGetMeQueryKey(), (old: typeof session) =>
+            old ? { ...old, mustChangePassword: false } : old,
+          );
           setLocation("/dashboard");
         },
         onError: (error: unknown) => {
