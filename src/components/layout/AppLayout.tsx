@@ -56,8 +56,8 @@ function AppSidebar({ role }: { role?: "super_admin" | "admin" }) {
             <GraduationCap className="h-4 w-4" />
           </div>
           <div className="flex flex-col leading-tight">
-            <span className="text-foreground">upGrad SOT</span>
-            <span className="text-[11px] font-medium text-muted-foreground tracking-wide">Admin Console</span>
+            <span className="text-foreground">Newsletter Central</span>
+            <span className="text-[11px] font-medium text-muted-foreground tracking-wide">upGrad SOT</span>
           </div>
         </div>
       </SidebarHeader>
