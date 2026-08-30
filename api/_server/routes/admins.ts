@@ -7,27 +7,36 @@ import { requireSuperAdmin } from "../middlewares/requireSuperAdmin.js";
 
 const router: IRouter = Router();
 
+const ADMIN_PUBLIC_COLUMNS = {
+  id: adminsTable.id,
+  email: adminsTable.email,
+  role: adminsTable.role,
+  isActive: adminsTable.isActive,
+  mustChangePassword: adminsTable.mustChangePassword,
+  createdAt: adminsTable.createdAt,
+};
+
+function getRequesterId(req: unknown): number | undefined {
+  return (req as { adminId?: number }).adminId;
+}
+function getRequesterEmail(req: unknown): string | undefined {
+  return (req as { adminEmail?: string }).adminEmail;
+}
+
 // All routes here are super-admin only: this is user management, not
 // something a regular admin should be able to see or touch.
 router.get("/admins", requireAuth, requireSuperAdmin, async (_req, res): Promise<void> => {
-  const rows = await db
-    .select({
-      id: adminsTable.id,
-      email: adminsTable.email,
-      role: adminsTable.role,
-      isActive: adminsTable.isActive,
-      mustChangePassword: adminsTable.mustChangePassword,
-      createdAt: adminsTable.createdAt,
-    })
-    .from(adminsTable)
-    .orderBy(adminsTable.createdAt);
-
+  const rows = await db.select(ADMIN_PUBLIC_COLUMNS).from(adminsTable).orderBy(adminsTable.createdAt);
   // Never return passwordHash, even to a super admin.
   res.json({ admins: rows });
 });
 
 router.post("/admins", requireAuth, requireSuperAdmin, async (req, res): Promise<void> => {
-  const { email, initialPassword } = req.body as { email?: string; initialPassword?: string };
+  const { email, initialPassword, role } = req.body as {
+    email?: string;
+    initialPassword?: string;
+    role?: string;
+  };
 
   if (!email || !initialPassword) {
     res.status(400).json({ error: "Email and initial password are required" });
@@ -37,6 +46,7 @@ router.post("/admins", requireAuth, requireSuperAdmin, async (req, res): Promise
     res.status(400).json({ error: "Initial password must be at least 8 characters" });
     return;
   }
+  const resolvedRole = role === "super_admin" ? "super_admin" : "admin";
 
   const [existing] = await db.select({ id: adminsTable.id }).from(adminsTable).where(eq(adminsTable.email, email));
   if (existing) {
@@ -45,27 +55,23 @@ router.post("/admins", requireAuth, requireSuperAdmin, async (req, res): Promise
   }
 
   const passwordHash = await bcrypt.hash(initialPassword, 10);
-  const creatorId = (req as unknown as { adminId?: number }).adminId ?? null;
+  const creatorId = getRequesterId(req) ?? null;
 
   const [created] = await db
     .insert(adminsTable)
     .values({
       email,
       passwordHash,
-      role: "admin",
+      role: resolvedRole,
       mustChangePassword: true,
       createdBy: creatorId,
     })
-    .returning({
-      id: adminsTable.id,
-      email: adminsTable.email,
-      role: adminsTable.role,
-      isActive: adminsTable.isActive,
-      mustChangePassword: adminsTable.mustChangePassword,
-      createdAt: adminsTable.createdAt,
-    });
+    .returning(ADMIN_PUBLIC_COLUMNS);
 
-  req.log.info({ createdEmail: email, by: (req as unknown as { adminEmail?: string }).adminEmail }, "New admin created");
+  req.log.info(
+    { createdEmail: email, role: resolvedRole, by: getRequesterEmail(req) },
+    "New admin created",
+  );
   res.status(201).json(created);
 });
 
@@ -83,8 +89,7 @@ router.patch("/admins/:id/active", requireAuth, requireSuperAdmin, async (req, r
     return;
   }
 
-  const requesterId = (req as unknown as { adminId?: number }).adminId;
-  if (requesterId === id && !isActive) {
+  if (getRequesterId(req) === id && !isActive) {
     res.status(400).json({ error: "You cannot deactivate your own account" });
     return;
   }
@@ -95,7 +100,7 @@ router.patch("/admins/:id/active", requireAuth, requireSuperAdmin, async (req, r
     return;
   }
   if (target.role === "super_admin" && !isActive) {
-    res.status(400).json({ error: "The super admin account cannot be deactivated" });
+    res.status(400).json({ error: "A super admin must be demoted to admin before they can be deactivated" });
     return;
   }
 
@@ -103,20 +108,92 @@ router.patch("/admins/:id/active", requireAuth, requireSuperAdmin, async (req, r
     .update(adminsTable)
     .set({ isActive })
     .where(eq(adminsTable.id, id))
-    .returning({
-      id: adminsTable.id,
-      email: adminsTable.email,
-      role: adminsTable.role,
-      isActive: adminsTable.isActive,
-      mustChangePassword: adminsTable.mustChangePassword,
-      createdAt: adminsTable.createdAt,
-    });
+    .returning(ADMIN_PUBLIC_COLUMNS);
+
+  req.log.info({ targetEmail: target.email, isActive, by: getRequesterEmail(req) }, "Admin active status changed");
+  res.json(updated);
+});
+
+// Promote an admin to super admin, or demote a super admin to admin.
+// You can never change your own role here — that's the guard against
+// accidentally locking yourself out (or, symmetrically, quietly granting
+// yourself a role you shouldn't have without another super admin's action).
+router.patch("/admins/:id/role", requireAuth, requireSuperAdmin, async (req, res): Promise<void> => {
+  const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const id = parseInt(raw, 10);
+  if (isNaN(id)) {
+    res.status(400).json({ error: "Invalid ID" });
+    return;
+  }
+
+  const { role } = req.body as { role?: string };
+  if (role !== "super_admin" && role !== "admin") {
+    res.status(400).json({ error: "role must be 'super_admin' or 'admin'" });
+    return;
+  }
+
+  if (getRequesterId(req) === id) {
+    res.status(400).json({ error: "You cannot change your own role" });
+    return;
+  }
+
+  const [target] = await db.select().from(adminsTable).where(eq(adminsTable.id, id));
+  if (!target) {
+    res.status(404).json({ error: "Admin not found" });
+    return;
+  }
+
+  if (target.role === "super_admin" && role === "admin") {
+    const superAdmins = await db
+      .select({ id: adminsTable.id })
+      .from(adminsTable)
+      .where(eq(adminsTable.role, "super_admin"));
+    if (superAdmins.length <= 1) {
+      res.status(400).json({ error: "At least one super admin must remain" });
+      return;
+    }
+  }
+
+  const [updated] = await db
+    .update(adminsTable)
+    .set({ role })
+    .where(eq(adminsTable.id, id))
+    .returning(ADMIN_PUBLIC_COLUMNS);
 
   req.log.info(
-    { targetEmail: target.email, isActive, by: (req as unknown as { adminEmail?: string }).adminEmail },
-    "Admin active status changed",
+    { targetEmail: target.email, newRole: role, by: getRequesterEmail(req) },
+    "Admin role changed",
   );
   res.json(updated);
+});
+
+router.delete("/admins/:id", requireAuth, requireSuperAdmin, async (req, res): Promise<void> => {
+  const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const id = parseInt(raw, 10);
+  if (isNaN(id)) {
+    res.status(400).json({ error: "Invalid ID" });
+    return;
+  }
+
+  if (getRequesterId(req) === id) {
+    res.status(400).json({ error: "You cannot delete your own account" });
+    return;
+  }
+
+  const [target] = await db.select().from(adminsTable).where(eq(adminsTable.id, id));
+  if (!target) {
+    res.status(404).json({ error: "Admin not found" });
+    return;
+  }
+  if (target.role === "super_admin") {
+    res.status(400).json({ error: "A super admin must be demoted to admin before they can be deleted" });
+    return;
+  }
+
+  await db.delete(adminsTable).where(eq(adminsTable.id, id));
+
+  req.log.info({ deletedEmail: target.email, by: getRequesterEmail(req) }, "Admin deleted");
+  res.json({ message: "Admin deleted" });
 });
 
 export default router;

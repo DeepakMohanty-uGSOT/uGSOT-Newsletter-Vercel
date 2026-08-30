@@ -10,27 +10,56 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
-import { useListAdmins, useCreateAdmin, useSetAdminActive } from "@/lib/adminApi";
-import { Plus, Loader2, ShieldCheck } from "lucide-react";
+import { useGetMe, getGetMeQueryKey } from "@/lib/api-client";
+import { useListAdmins, useCreateAdmin, useSetAdminActive, useSetAdminRole, useDeleteAdmin, type AdminRecord } from "@/lib/adminApi";
+import { Plus, Loader2, ShieldCheck, MoreVertical } from "lucide-react";
 import { format } from "date-fns";
 
 const createAdminSchema = z.object({
   email: z.string().email("Please enter a valid email address"),
   initialPassword: z.string().min(8, "Initial password must be at least 8 characters"),
+  role: z.enum(["admin", "super_admin"]),
 });
 
+function apiErrorMessage(error: unknown): string | undefined {
+  return error && typeof error === "object" && "data" in error
+    ? (error as { data?: { error?: string } }).data?.error
+    : undefined;
+}
+
 export default function Users() {
+  const { data: session } = useGetMe({ query: { queryKey: getGetMeQueryKey(), retry: false } });
   const { data, isLoading } = useListAdmins();
   const createAdminMutation = useCreateAdmin();
   const setActiveMutation = useSetAdminActive();
+  const setRoleMutation = useSetAdminRole();
+  const deleteAdminMutation = useDeleteAdmin();
   const { toast } = useToast();
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<AdminRecord | null>(null);
 
   const form = useForm<z.infer<typeof createAdminSchema>>({
     resolver: zodResolver(createAdminSchema),
-    defaultValues: { email: "", initialPassword: "" },
+    defaultValues: { email: "", initialPassword: "", role: "admin" },
   });
 
   const onCreate = (values: z.infer<typeof createAdminSchema>) => {
@@ -41,28 +70,49 @@ export default function Users() {
         setDialogOpen(false);
       },
       onError: (error: unknown) => {
-        const message =
-          error && typeof error === "object" && "data" in error
-            ? ((error as { data?: { error?: string } }).data?.error ?? undefined)
-            : undefined;
-        toast({ title: "Could not add admin", description: message ?? "Something went wrong", variant: "destructive" });
+        toast({ title: "Could not add admin", description: apiErrorMessage(error) ?? "Something went wrong", variant: "destructive" });
       },
     });
   };
 
-  const toggleActive = (id: number, isActive: boolean) => {
+  const toggleActive = (admin: AdminRecord) => {
     setActiveMutation.mutate(
-      { id, isActive: !isActive },
+      { id: admin.id, isActive: !admin.isActive },
       {
         onError: (error: unknown) => {
-          const message =
-            error && typeof error === "object" && "data" in error
-              ? ((error as { data?: { error?: string } }).data?.error ?? undefined)
-              : undefined;
-          toast({ title: "Could not update admin", description: message ?? "Something went wrong", variant: "destructive" });
+          toast({ title: "Could not update admin", description: apiErrorMessage(error) ?? "Something went wrong", variant: "destructive" });
         },
       },
     );
+  };
+
+  const toggleRole = (admin: AdminRecord) => {
+    const newRole = admin.role === "super_admin" ? "admin" : "super_admin";
+    setRoleMutation.mutate(
+      { id: admin.id, role: newRole },
+      {
+        onSuccess: () => {
+          toast({ title: "Role updated", description: `${admin.email} is now ${newRole === "super_admin" ? "a Super Admin" : "an Admin"}.` });
+        },
+        onError: (error: unknown) => {
+          toast({ title: "Could not change role", description: apiErrorMessage(error) ?? "Something went wrong", variant: "destructive" });
+        },
+      },
+    );
+  };
+
+  const confirmDelete = () => {
+    if (!deleteTarget) return;
+    deleteAdminMutation.mutate(deleteTarget.id, {
+      onSuccess: () => {
+        toast({ title: "Admin deleted", description: `${deleteTarget.email} has been removed.` });
+        setDeleteTarget(null);
+      },
+      onError: (error: unknown) => {
+        toast({ title: "Could not delete admin", description: apiErrorMessage(error) ?? "Something went wrong", variant: "destructive" });
+        setDeleteTarget(null);
+      },
+    });
   };
 
   return (
@@ -114,6 +164,27 @@ export default function Users() {
                       </FormItem>
                     )}
                   />
+                  <FormField
+                    control={form.control}
+                    name="role"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Role</FormLabel>
+                        <Select value={field.value} onValueChange={field.onChange}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="admin">Admin</SelectItem>
+                            <SelectItem value="super_admin">Super Admin</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
                   <DialogFooter>
                     <Button type="submit" disabled={createAdminMutation.isPending}>
                       {createAdminMutation.isPending ? (
@@ -135,7 +206,7 @@ export default function Users() {
         <Card>
           <CardHeader>
             <CardTitle>Admin accounts</CardTitle>
-            <CardDescription>Only the super admin can add, deactivate, or reactivate accounts.</CardDescription>
+            <CardDescription>Only the super admin can add, promote, demote, deactivate, or delete accounts.</CardDescription>
           </CardHeader>
           <CardContent>
             {isLoading ? (
@@ -155,50 +226,106 @@ export default function Users() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {data?.admins.map((admin) => (
-                    <TableRow key={admin.id}>
-                      <TableCell className="font-medium">{admin.email}</TableCell>
-                      <TableCell>
-                        {admin.role === "super_admin" ? (
-                          <Badge variant="secondary" className="gap-1">
-                            <ShieldCheck className="h-3 w-3" />
-                            Super Admin
-                          </Badge>
-                        ) : (
-                          <Badge variant="outline">Admin</Badge>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {admin.isActive ? (
-                          <Badge className="bg-green-100 text-green-800 hover:bg-green-100">Active</Badge>
-                        ) : (
-                          <Badge variant="destructive">Deactivated</Badge>
-                        )}
-                        {admin.mustChangePassword && (
-                          <span className="ml-2 text-xs text-muted-foreground">(hasn't set password yet)</span>
-                        )}
-                      </TableCell>
-                      <TableCell>{format(new Date(admin.createdAt), "PP")}</TableCell>
-                      <TableCell className="text-right">
-                        {admin.role !== "super_admin" && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            disabled={setActiveMutation.isPending}
-                            onClick={() => toggleActive(admin.id, admin.isActive)}
-                          >
-                            {admin.isActive ? "Deactivate" : "Reactivate"}
-                          </Button>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {data?.admins.map((admin) => {
+                    const isSelf = admin.email === session?.email;
+                    return (
+                      <TableRow key={admin.id}>
+                        <TableCell className="font-medium">
+                          {admin.email}
+                          {isSelf && <span className="ml-2 text-xs text-muted-foreground">(you)</span>}
+                        </TableCell>
+                        <TableCell>
+                          {admin.role === "super_admin" ? (
+                            <Badge variant="secondary" className="gap-1">
+                              <ShieldCheck className="h-3 w-3" />
+                              Super Admin
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline">Admin</Badge>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {admin.isActive ? (
+                            <Badge className="bg-green-100 text-green-800 hover:bg-green-100">Active</Badge>
+                          ) : (
+                            <Badge variant="destructive">Deactivated</Badge>
+                          )}
+                          {admin.mustChangePassword && (
+                            <span className="ml-2 text-xs text-muted-foreground">(hasn't set password yet)</span>
+                          )}
+                        </TableCell>
+                        <TableCell>{format(new Date(admin.createdAt), "PP")}</TableCell>
+                        <TableCell className="text-right">
+                          {isSelf ? (
+                            <span className="text-xs text-muted-foreground">No actions on your own account</span>
+                          ) : (
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="outline" size="sm">
+                                  <MoreVertical className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem
+                                  disabled={setRoleMutation.isPending}
+                                  onClick={() => toggleRole(admin)}
+                                >
+                                  {admin.role === "super_admin" ? "Make Admin" : "Make Super Admin"}
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  disabled={setActiveMutation.isPending}
+                                  onClick={() => toggleActive(admin)}
+                                >
+                                  {admin.isActive ? "Deactivate" : "Reactivate"}
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  className="text-destructive focus:text-destructive"
+                                  onClick={() => setDeleteTarget(admin)}
+                                >
+                                  Delete
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             )}
           </CardContent>
         </Card>
       </div>
+
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {deleteTarget?.email}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently removes their admin account. This cannot be undone — they will need
+              to be added again from scratch if you change your mind.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={confirmDelete}
+              disabled={deleteAdminMutation.isPending}
+            >
+              {deleteAdminMutation.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                "Delete"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </AppLayout>
   );
 }

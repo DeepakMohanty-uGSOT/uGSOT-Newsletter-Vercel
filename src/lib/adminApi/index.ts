@@ -31,7 +31,7 @@ export function useListAdmins() {
 export function useCreateAdmin() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (data: { email: string; initialPassword: string }) =>
+    mutationFn: (data: { email: string; initialPassword: string; role: "super_admin" | "admin" }) =>
       customFetch<AdminRecord>("/api/admins", {
         method: "POST",
         body: JSON.stringify(data),
@@ -50,6 +50,31 @@ export function useSetAdminActive() {
         method: "PATCH",
         body: JSON.stringify({ isActive }),
       }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: getListAdminsQueryKey() });
+    },
+  });
+}
+
+export function useSetAdminRole() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, role }: { id: number; role: "super_admin" | "admin" }) =>
+      customFetch<AdminRecord>(`/api/admins/${id}/role`, {
+        method: "PATCH",
+        body: JSON.stringify({ role }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: getListAdminsQueryKey() });
+    },
+  });
+}
+
+export function useDeleteAdmin() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) =>
+      customFetch<{ message: string }>(`/api/admins/${id}`, { method: "DELETE" }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: getListAdminsQueryKey() });
     },
