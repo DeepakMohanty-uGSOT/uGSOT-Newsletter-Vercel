@@ -5,7 +5,7 @@
  * ugSOT Newsletter Management API
  * OpenAPI spec version: 0.1.0
  */
-import type { EmailLogDeliveryStatus } from "./emailLogDeliveryStatus";
+import type { EmailLogDeliveryStatus } from "./emailLogDeliveryStatus.js";
 
 export interface EmailLog {
   id: number;

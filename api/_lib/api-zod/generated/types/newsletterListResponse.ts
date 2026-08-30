@@ -5,7 +5,7 @@
  * ugSOT Newsletter Management API
  * OpenAPI spec version: 0.1.0
  */
-import type { Newsletter } from "./newsletter";
+import type { Newsletter } from "./newsletter.js";
 
 export interface NewsletterListResponse {
   newsletters: Newsletter[];

@@ -5,8 +5,8 @@
  * ugSOT Newsletter Management API
  * OpenAPI spec version: 0.1.0
  */
-import type { Newsletter } from "./newsletter";
-import type { EmailLog } from "./emailLog";
+import type { Newsletter } from "./newsletter.js";
+import type { EmailLog } from "./emailLog.js";
 
 export interface DashboardStats {
   totalEmployees: number;

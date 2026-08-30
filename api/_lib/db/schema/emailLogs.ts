@@ -1,7 +1,7 @@
 import { pgTable, serial, text, integer, timestamp } from "drizzle-orm/pg-core";
 import { z } from "zod";
-import { employeesTable } from "./employees";
-import { newslettersTable } from "./newsletters";
+import { employeesTable } from "./employees.js";
+import { newslettersTable } from "./newsletters.js";
 
 export const emailLogsTable = pgTable("email_logs", {
   id: serial("id").primaryKey(),

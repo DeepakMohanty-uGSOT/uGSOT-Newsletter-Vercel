@@ -5,7 +5,7 @@
  * ugSOT Newsletter Management API
  * OpenAPI spec version: 0.1.0
  */
-import type { Employee } from "./employee";
+import type { Employee } from "./employee.js";
 
 export interface EmployeeListResponse {
   employees: Employee[];

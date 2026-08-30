@@ -5,7 +5,7 @@
  * ugSOT Newsletter Management API
  * OpenAPI spec version: 0.1.0
  */
-import type { ListEmailLogsStatus } from "./listEmailLogsStatus";
+import type { ListEmailLogsStatus } from "./listEmailLogsStatus.js";
 
 export type ListEmailLogsParams = {
   newsletterId?: number;

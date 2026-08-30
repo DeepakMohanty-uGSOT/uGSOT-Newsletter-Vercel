@@ -5,7 +5,7 @@
  * ugSOT Newsletter Management API
  * OpenAPI spec version: 0.1.0
  */
-import type { EmailLog } from "./emailLog";
+import type { EmailLog } from "./emailLog.js";
 
 export interface EmailLogListResponse {
   logs: EmailLog[];
