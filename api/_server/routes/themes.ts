@@ -11,7 +11,7 @@ router.get("/themes", requireAuth, async (_req, res): Promise<void> => {
 });
 
 router.post("/themes", requireAuth, async (req, res): Promise<void> => {
-  const { name, headerGradientStart, headerGradientEnd, accentColor, footerColor, bannerEmoji, greetingText } =
+  const { name, headerGradientStart, headerGradientEnd, accentColor, footerColor, bannerEmoji, greetingText, customHtml } =
     req.body as {
       name?: string;
       headerGradientStart?: string;
@@ -20,6 +20,7 @@ router.post("/themes", requireAuth, async (req, res): Promise<void> => {
       footerColor?: string;
       bannerEmoji?: string | null;
       greetingText?: string | null;
+      customHtml?: string | null;
     };
 
   if (!name || !headerGradientStart || !headerGradientEnd || !accentColor || !footerColor) {
@@ -43,6 +44,7 @@ router.post("/themes", requireAuth, async (req, res): Promise<void> => {
       footerColor,
       bannerEmoji: bannerEmoji || null,
       greetingText: greetingText || null,
+      customHtml: customHtml || null,
     })
     .returning();
 
@@ -58,7 +60,7 @@ router.patch("/themes/:id", requireAuth, async (req, res): Promise<void> => {
     return;
   }
 
-  const { name, headerGradientStart, headerGradientEnd, accentColor, footerColor, bannerEmoji, greetingText } =
+  const { name, headerGradientStart, headerGradientEnd, accentColor, footerColor, bannerEmoji, greetingText, customHtml } =
     req.body as {
       name?: string;
       headerGradientStart?: string;
@@ -67,6 +69,7 @@ router.patch("/themes/:id", requireAuth, async (req, res): Promise<void> => {
       footerColor?: string;
       bannerEmoji?: string | null;
       greetingText?: string | null;
+      customHtml?: string | null;
     };
 
   const [existing] = await db.select().from(themesTable).where(eq(themesTable.id, id));
@@ -85,6 +88,7 @@ router.patch("/themes/:id", requireAuth, async (req, res): Promise<void> => {
       footerColor: footerColor ?? existing.footerColor,
       bannerEmoji: bannerEmoji === undefined ? existing.bannerEmoji : bannerEmoji,
       greetingText: greetingText === undefined ? existing.greetingText : greetingText,
+      customHtml: customHtml === undefined ? existing.customHtml : customHtml,
     })
     .where(eq(themesTable.id, id))
     .returning();

@@ -14,6 +14,7 @@ export interface ThemeRecord {
   footerColor: string;
   bannerEmoji: string | null;
   greetingText: string | null;
+  customHtml: string | null;
   isActive: boolean;
   createdAt: string;
 }

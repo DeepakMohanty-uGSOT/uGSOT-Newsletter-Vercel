@@ -10,6 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   AlertDialog,
@@ -47,6 +48,7 @@ const themeSchema = z.object({
   footerColor: z.string().min(1, "Required").regex(/^#([0-9a-fA-F]{6})$/, "Use a hex color like #1d4ed8"),
   bannerEmoji: z.string().optional(),
   greetingText: z.string().optional(),
+  customHtml: z.string().optional(),
 });
 
 type ThemeFormValues = z.infer<typeof themeSchema>;
@@ -59,6 +61,7 @@ const defaultFormValues: ThemeFormValues = {
   footerColor: "#111827",
   bannerEmoji: "",
   greetingText: "",
+  customHtml: "",
 };
 
 function apiErrorMessage(error: unknown): string | undefined {
@@ -123,6 +126,7 @@ export default function Themes() {
       footerColor: theme.footerColor,
       bannerEmoji: theme.bannerEmoji ?? "",
       greetingText: theme.greetingText ?? "",
+      customHtml: theme.customHtml ?? "",
     });
     setDialogOpen(true);
   };
@@ -136,6 +140,7 @@ export default function Themes() {
       footerColor: values.footerColor,
       bannerEmoji: values.bannerEmoji || null,
       greetingText: values.greetingText || null,
+      customHtml: values.customHtml || null,
     };
 
     const onSuccess = () => {
@@ -192,7 +197,7 @@ export default function Themes() {
               <Plus className="h-4 w-4" />
               New Theme
             </Button>
-            <DialogContent>
+            <DialogContent className="max-w-xl max-h-[85vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>{editing ? "Edit theme" : "Create a new theme"}</DialogTitle>
                 <DialogDescription>
@@ -245,6 +250,33 @@ export default function Themes() {
                         <FormControl>
                           <Input placeholder="Happy Independence Day!" {...field} />
                         </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="customHtml"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Custom HTML template (optional)</FormLabel>
+                        <FormControl>
+                          <Textarea
+                            className="font-mono text-xs min-h-[220px]"
+                            placeholder={
+                              "Leave blank to use the fields above with the default layout.\n\n" +
+                              "Or paste a full HTML email here to take complete control of the design. " +
+                              "Available placeholders, replaced per recipient at send time:\n" +
+                              "{{name}}  {{email}}  {{title}}  {{topic}}  {{description}}"
+                            }
+                            {...field}
+                          />
+                        </FormControl>
+                        <p className="text-xs text-muted-foreground">
+                          When this is filled in, it completely replaces the default template (colors above are
+                          then ignored) — use {"{{name}}"}, {"{{email}}"}, {"{{title}}"}, {"{{topic}}"}, and{" "}
+                          {"{{description}}"} anywhere you want that value inserted.
+                        </p>
                         <FormMessage />
                       </FormItem>
                     )}

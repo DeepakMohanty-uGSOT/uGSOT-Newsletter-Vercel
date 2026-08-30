@@ -76,6 +76,7 @@ const FALLBACK_THEME = {
   footerColor: "#c8102e",
   bannerEmoji: null as string | null,
   greetingText: null as string | null,
+  customHtml: null as string | null,
 };
 
 async function getThemeForNewsletter(themeId: number | null) {
@@ -102,8 +103,21 @@ function buildEmailHtml(
     footerColor: string;
     bannerEmoji: string | null;
     greetingText: string | null;
+    customHtml?: string | null;
   }
 ): string {
+  // A theme can fully override the template with its own raw HTML. We
+  // support a small set of placeholders so the custom markup can still be
+  // personalized per recipient / per newsletter.
+  if (theme.customHtml) {
+    return theme.customHtml
+      .replaceAll("{{name}}", employeeName)
+      .replaceAll("{{email}}", employeeEmail)
+      .replaceAll("{{title}}", newsletter.title)
+      .replaceAll("{{topic}}", newsletter.topic)
+      .replaceAll("{{description}}", newsletter.description ?? "");
+  }
+
   const bannerHtml = theme.bannerEmoji
     ? `<div style="font-size:32px; line-height:1; margin-bottom:8px;">${theme.bannerEmoji}</div>`
     : "";
