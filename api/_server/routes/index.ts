@@ -5,6 +5,7 @@ import employeesRouter from "./employees.js";
 import newslettersRouter from "./newsletters.js";
 import emailLogsRouter from "./emailLogs.js";
 import dashboardRouter from "./dashboard.js";
+import adminsRouter from "./admins.js";
 
 const router: IRouter = Router();
 
@@ -14,5 +15,6 @@ router.use(employeesRouter);
 router.use(newslettersRouter);
 router.use(emailLogsRouter);
 router.use(dashboardRouter);
+router.use(adminsRouter);
 
 export default router;

@@ -3,10 +3,16 @@
  * Do not edit manually.
  * Api
  * ugSOT Newsletter Management API
- * OpenAPI spec version: 0.1.0
+ *
+ * Hand-patched: added `role` and `mustChangePassword`, which the server now
+ * returns as part of the multi-admin auth feature. There's no OpenAPI
+ * codegen pipeline wired into this flat project, so this was edited by hand
+ * to match the actual server response rather than regenerated.
  */
 
 export interface AdminSession {
   email: string;
   loggedIn: boolean;
+  role: "super_admin" | "admin";
+  mustChangePassword: boolean;
 }

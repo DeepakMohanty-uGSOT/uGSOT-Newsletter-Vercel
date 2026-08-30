@@ -11,6 +11,8 @@ import Employees from "./pages/Employees";
 import Newsletters from "./pages/Newsletters";
 import NewsletterDetail from "./pages/NewsletterDetail";
 import EmailLogs from "./pages/EmailLogs";
+import ChangePassword from "./pages/ChangePassword";
+import Users from "./pages/Users";
 
 const queryClient = new QueryClient();
 
@@ -19,6 +21,8 @@ function Router() {
     <Switch>
       <Route path="/" component={() => <Redirect to="/dashboard" />} />
       <Route path="/login" component={Login} />
+      <Route path="/change-password" component={ChangePassword} />
+      <Route path="/users" component={Users} />
       <Route path="/dashboard" component={Dashboard} />
       <Route path="/employees" component={Employees} />
       <Route path="/newsletters" component={Newsletters} />

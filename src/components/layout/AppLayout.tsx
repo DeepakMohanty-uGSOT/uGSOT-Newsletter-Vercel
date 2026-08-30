@@ -1,6 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { useGetMe, getGetMeQueryKey, useLogout } from "@/lib/api-client";
-import { LayoutDashboard, Users, Mail, Settings, LogOut, FileText, GraduationCap, Loader2 } from "lucide-react";
+import { LayoutDashboard, Users, Mail, Settings, LogOut, FileText, GraduationCap, Loader2, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Sidebar,
@@ -20,7 +20,7 @@ import {
 import { useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
-const menuItems = [
+const baseMenuItems = [
   { title: "Dashboard", icon: LayoutDashboard, url: "/dashboard" },
   { title: "Employees", icon: Users, url: "/employees" },
   { title: "Newsletters", icon: FileText, url: "/newsletters" },
@@ -28,8 +28,13 @@ const menuItems = [
   { title: "Settings", icon: Settings, url: "/settings" },
 ];
 
-function AppSidebar() {
+const superAdminMenuItems = [
+  { title: "Users", icon: ShieldCheck, url: "/users" },
+];
+
+function AppSidebar({ role }: { role?: "super_admin" | "admin" }) {
   const [location] = useLocation();
+  const menuItems = role === "super_admin" ? [...baseMenuItems, ...superAdminMenuItems] : baseMenuItems;
   const logoutMutation = useLogout();
   const queryClient = useQueryClient();
 
@@ -89,10 +94,15 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const [location, setLocation] = useLocation();
 
   useEffect(() => {
-    if (!isLoading && (!session || !session.loggedIn)) {
+    if (isLoading) return;
+    if (!session || !session.loggedIn) {
       if (location !== "/login") {
         setLocation("/login");
       }
+      return;
+    }
+    if (session.mustChangePassword && location !== "/change-password") {
+      setLocation("/change-password");
     }
   }, [isLoading, session, location, setLocation]);
 
@@ -108,10 +118,14 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     return null; // Will redirect
   }
 
+  if (session.mustChangePassword) {
+    return null; // Will redirect to /change-password
+  }
+
   return (
     <SidebarProvider>
       <div className="flex min-h-screen w-full bg-muted/30">
-        <AppSidebar />
+        <AppSidebar role={session.role} />
         <main className="flex-1 flex flex-col min-w-0">
           <header className="h-16 flex items-center border-b bg-background px-4 lg:px-8 gap-4 sticky top-0 z-10">
             <SidebarTrigger />
