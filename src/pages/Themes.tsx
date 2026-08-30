@@ -11,6 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   AlertDialog,
@@ -52,6 +53,23 @@ function apiErrorMessage(error: unknown): string | undefined {
   return error && typeof error === "object" && "data" in error
     ? (error as { data?: { error?: string } }).data?.error
     : undefined;
+}
+
+// Realistic stand-in values so a theme's {{placeholders}} render as an
+// actual-looking email in the Preview tab, without calling the server.
+const SAMPLE_VALUES: Record<string, string> = {
+  "{{name}}": "Priya Sharma",
+  "{{email}}": "priya.sharma@upgradsot.com",
+  "{{title}}": "uGSOT Newsletter – Issue 010 | September 2026",
+  "{{topic}}": "AI Agents, Campus Highlights & What's New This Month",
+  "{{description}}": "This month's edition covers our latest research updates, student achievements, and upcoming events at upGrad School Of Technology.",
+};
+
+function renderPreviewHtml(template: string): string {
+  return Object.entries(SAMPLE_VALUES).reduce(
+    (html, [placeholder, value]) => html.split(placeholder).join(value),
+    template
+  );
 }
 
 export default function Themes() {
@@ -184,9 +202,29 @@ export default function Themes() {
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>Email HTML</FormLabel>
-                          <FormControl>
-                            <Textarea className="font-mono text-xs min-h-[420px]" {...field} />
-                          </FormControl>
+                          <Tabs defaultValue="edit">
+                            <TabsList className="grid w-full grid-cols-2">
+                              <TabsTrigger value="edit">Edit HTML</TabsTrigger>
+                              <TabsTrigger value="preview">Preview</TabsTrigger>
+                            </TabsList>
+                            <TabsContent value="edit">
+                              <FormControl>
+                                <Textarea className="font-mono text-xs min-h-[420px]" {...field} />
+                              </FormControl>
+                            </TabsContent>
+                            <TabsContent value="preview">
+                              <div className="border rounded-md overflow-hidden bg-white">
+                                <iframe
+                                  title="Theme preview"
+                                  srcDoc={renderPreviewHtml(field.value || "")}
+                                  className="w-full h-[420px] border-0"
+                                />
+                              </div>
+                              <p className="mt-2 text-xs text-muted-foreground">
+                                Rendered with sample recipient/newsletter data so you can see the real layout.
+                              </p>
+                            </TabsContent>
+                          </Tabs>
                           <FormMessage />
                         </FormItem>
                       )}
