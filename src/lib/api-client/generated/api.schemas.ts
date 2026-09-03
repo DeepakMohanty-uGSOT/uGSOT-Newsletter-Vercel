@@ -135,6 +135,8 @@ export type ListNewslettersParams = {
 export type ListEmailLogsParams = {
   newsletterId?: number;
   status?: ListEmailLogsStatus;
+  month?: string;
+  date?: string;
   page?: number;
   pageSize?: number;
 };

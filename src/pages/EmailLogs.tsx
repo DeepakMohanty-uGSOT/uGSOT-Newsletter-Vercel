@@ -6,58 +6,151 @@ import {
   getListNewslettersQueryKey,
   type ListEmailLogsStatus,
 } from "@/lib/api-client";
+import { useEmailLogSummary } from "@/lib/emailLogSummaryApi";
 import { AppLayout } from "@/components/layout/AppLayout";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
 import { format } from "date-fns";
 import { Link } from "wouter";
+import { CalendarDays, X } from "lucide-react";
+
 function getInitialStatusFilter(): ListEmailLogsStatus | "all" {
   const status = new URLSearchParams(window.location.search).get("status");
   return status === "sent" || status === "failed" || status === "pending" ? status : "all";
+}
+
+function currentMonth(): string {
+  return format(new Date(), "yyyy-MM");
 }
 
 export default function EmailLogs() {
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState<ListEmailLogsStatus | "all">(getInitialStatusFilter);
   const [newsletterFilter, setNewsletterFilter] = useState<string>("all");
+  const [monthFilter, setMonthFilter] = useState<string>("");
+  const [dateFilter, setDateFilter] = useState<string>("");
+  const [summaryMonth, setSummaryMonth] = useState<string>(currentMonth());
 
   const { data: newslettersData } = useListNewsletters(
-    { pageSize: 100 }, 
+    { pageSize: 100 },
     { query: { queryKey: getListNewslettersQueryKey({ pageSize: 100 }) } }
   );
 
-  const { data, isLoading } = useListEmailLogs(
-    { 
-      page, 
-      pageSize: 15,
-      status: statusFilter !== "all" ? statusFilter : undefined,
-      newsletterId: newsletterFilter !== "all" ? parseInt(newsletterFilter, 10) : undefined
-    },
-    { query: { queryKey: getListEmailLogsQueryKey({ 
-      page, 
-      pageSize: 15,
-      status: statusFilter !== "all" ? statusFilter : undefined,
-      newsletterId: newsletterFilter !== "all" ? parseInt(newsletterFilter, 10) : undefined
-    }) } }
-  );
+  const listParams = {
+    page,
+    pageSize: 15,
+    status: statusFilter !== "all" ? statusFilter : undefined,
+    newsletterId: newsletterFilter !== "all" ? parseInt(newsletterFilter, 10) : undefined,
+    month: !dateFilter && monthFilter ? monthFilter : undefined,
+    date: dateFilter || undefined,
+  };
+
+  const { data, isLoading } = useListEmailLogs(listParams, {
+    query: { queryKey: getListEmailLogsQueryKey(listParams) },
+  });
+
+  const { data: summary, isLoading: isSummaryLoading } = useEmailLogSummary(summaryMonth);
+
+  const hasActiveFilters =
+    statusFilter !== "all" || newsletterFilter !== "all" || monthFilter !== "" || dateFilter !== "";
+
+  const resetFilters = () => {
+    setStatusFilter("all");
+    setNewsletterFilter("all");
+    setMonthFilter("");
+    setDateFilter("");
+    setPage(1);
+  };
+
+  const filterByDate = (date: string) => {
+    setDateFilter(date);
+    setMonthFilter("");
+    setPage(1);
+  };
 
   return (
     <AppLayout>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Email Logs</h1>
-          <p className="text-muted-foreground mt-1">Monitor delivery status for all outgoing communications.</p>
+          <p className="text-muted-foreground mt-1">
+            Complete, permanent history of every email sent — nothing here is ever deleted.
+          </p>
         </div>
       </div>
 
+      <Card className="mb-6">
+        <CardHeader className="pb-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <CalendarDays className="h-4 w-4 text-muted-foreground" />
+                Sends by month
+              </CardTitle>
+              <CardDescription>How many newsletter emails were sent, by month and by day.</CardDescription>
+            </div>
+            <div className="w-full sm:w-48">
+              <Select value={summaryMonth} onValueChange={setSummaryMonth}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select month" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(summary?.months?.some((m) => m.month === summaryMonth)
+                    ? summary.months
+                    : [{ month: summaryMonth, sent: 0, failed: 0, pending: 0, total: 0 }, ...(summary?.months ?? [])]
+                  ).map((m) => (
+                    <SelectItem key={m.month} value={m.month}>
+                      {format(new Date(`${m.month}-01T00:00:00`), "MMMM yyyy")}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="pt-0">
+          {isSummaryLoading ? (
+            <div className="flex gap-2 flex-wrap">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <Skeleton key={i} className="h-16 w-24" />
+              ))}
+            </div>
+          ) : !summary?.days?.length ? (
+            <p className="text-sm text-muted-foreground py-4 text-center">
+              No emails sent in {format(new Date(`${summaryMonth}-01T00:00:00`), "MMMM yyyy")}.
+            </p>
+          ) : (
+            <div className="flex gap-2 flex-wrap">
+              {summary.days.map((d) => (
+                <button
+                  key={d.date}
+                  onClick={() => filterByDate(d.date)}
+                  className={`text-left rounded-lg border px-3 py-2 min-w-[110px] hover:border-primary transition-colors ${
+                    dateFilter === d.date ? "border-primary bg-primary/5" : "border-border"
+                  }`}
+                >
+                  <div className="text-xs text-muted-foreground">{format(new Date(`${d.date}T00:00:00`), "MMM d")}</div>
+                  <div className="text-lg font-semibold">{d.total}</div>
+                  <div className="text-[11px] text-muted-foreground">
+                    {d.newsletters} newsletter{d.newsletters === 1 ? "" : "s"}
+                    {d.failed > 0 ? ` · ${d.failed} failed` : ""}
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader className="pb-4">
-          <div className="flex flex-col sm:flex-row gap-4">
-            <div className="w-full sm:w-64">
+          <div className="flex flex-col sm:flex-row flex-wrap gap-4 items-start sm:items-center">
+            <div className="w-full sm:w-48">
               <Select value={statusFilter} onValueChange={(v: any) => { setStatusFilter(v); setPage(1); }}>
                 <SelectTrigger>
                   <SelectValue placeholder="Filter by status" />
@@ -70,8 +163,8 @@ export default function EmailLogs() {
                 </SelectContent>
               </Select>
             </div>
-            
-            <div className="w-full sm:w-80">
+
+            <div className="w-full sm:w-72">
               <Select value={newsletterFilter} onValueChange={(v) => { setNewsletterFilter(v); setPage(1); }}>
                 <SelectTrigger>
                   <SelectValue placeholder="Filter by newsletter" />
@@ -84,6 +177,31 @@ export default function EmailLogs() {
                 </SelectContent>
               </Select>
             </div>
+
+            <div className="w-full sm:w-44">
+              <Input
+                type="month"
+                value={monthFilter}
+                onChange={(e) => { setMonthFilter(e.target.value); setDateFilter(""); setPage(1); }}
+                placeholder="Filter by month"
+              />
+            </div>
+
+            <div className="w-full sm:w-44">
+              <Input
+                type="date"
+                value={dateFilter}
+                onChange={(e) => { setDateFilter(e.target.value); setMonthFilter(""); setPage(1); }}
+                placeholder="Filter by date"
+              />
+            </div>
+
+            {hasActiveFilters && (
+              <Button variant="ghost" size="sm" onClick={resetFilters} className="gap-1">
+                <X className="h-3.5 w-3.5" />
+                Clear filters
+              </Button>
+            )}
           </div>
         </CardHeader>
         <CardContent className="p-0">
@@ -111,7 +229,7 @@ export default function EmailLogs() {
               ) : !data?.logs?.length ? (
                 <TableRow>
                   <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
-                    No email logs found.
+                    {hasActiveFilters ? "No email logs match these filters." : "No email logs found."}
                   </TableCell>
                 </TableRow>
               ) : (
@@ -143,7 +261,7 @@ export default function EmailLogs() {
               )}
             </TableBody>
           </Table>
-          
+
           {data && data.total > 0 && (
             <div className="flex items-center justify-between p-4 border-t">
               <div className="text-sm text-muted-foreground">
