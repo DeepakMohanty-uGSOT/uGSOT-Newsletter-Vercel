@@ -17,6 +17,7 @@ export interface DashboardStats {
   totalActiveAdmins: number;
   deliveryRate: number;
   topicBreakdown: { topic: string; count: number }[];
+  emailActivity: { date: string; sent: number; failed: number }[];
   recentNewsletters: Newsletter[];
   recentFailedDeliveries: EmailLog[];
 }

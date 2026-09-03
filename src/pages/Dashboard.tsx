@@ -4,8 +4,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
-import { Pie, PieChart, Cell } from "recharts";
-import { Users, FileText, Send, UserPlus, PlusCircle, CheckCircle2, ShieldCheck, Gauge, XCircle, Clock3 } from "lucide-react";
+import { Pie, PieChart, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid } from "recharts";
+import { Users, FileText, Send, UserPlus, PlusCircle, CheckCircle2, ShieldCheck, Gauge, XCircle, Clock3, TrendingUp } from "lucide-react";
 import { format } from "date-fns";
 import { Link } from "wouter";
 
@@ -61,6 +61,32 @@ function DeliveryRateGauge({
         </div>
       </div>
     </div>
+  );
+}
+
+function EmailActivityChart({ data }: { data: { date: string; sent: number; failed: number }[] }) {
+  const chartData = data.map((d) => ({
+    ...d,
+    label: format(new Date(`${d.date}T00:00:00`), "MMM d"),
+  }));
+
+  return (
+    <ChartContainer config={{} satisfies ChartConfig} className="h-[220px] w-full">
+      <BarChart data={chartData} barGap={2}>
+        <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="hsl(var(--border))" />
+        <XAxis
+          dataKey="label"
+          tickLine={false}
+          axisLine={false}
+          interval="preserveStartEnd"
+          tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+        />
+        <YAxis tickLine={false} axisLine={false} allowDecimals={false} width={28} tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} />
+        <ChartTooltip content={<ChartTooltipContent />} />
+        <Bar dataKey="sent" name="Sent" fill="hsl(var(--chart-1))" radius={[3, 3, 0, 0]} />
+        <Bar dataKey="failed" name="Failed" fill="hsl(0 0% 30%)" radius={[3, 3, 0, 0]} />
+      </BarChart>
+    </ChartContainer>
   );
 }
 
@@ -177,6 +203,39 @@ export default function Dashboard() {
               pending={stats?.totalEmailsPending ?? 0}
               rate={stats?.deliveryRate ?? 0}
             />
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="rounded-xl shadow-sm mb-8">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <TrendingUp className="h-4 w-4 text-muted-foreground" />
+            Email Activity — Last 14 Days
+          </CardTitle>
+          <CardDescription>Daily sent vs. failed volume, so spikes or delivery issues stand out early.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <Skeleton className="h-[220px] w-full rounded-lg" />
+          ) : !stats?.emailActivity?.some((d) => d.sent + d.failed > 0) ? (
+            <div className="h-[160px] flex items-center justify-center text-sm text-muted-foreground">
+              No email activity in the last 14 days.
+            </div>
+          ) : (
+            <>
+              <div className="mb-3 flex items-center gap-4 text-xs text-muted-foreground">
+                <span className="flex items-center gap-1.5">
+                  <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: "hsl(var(--chart-1))" }} />
+                  Sent
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: "hsl(0 0% 30%)" }} />
+                  Failed
+                </span>
+              </div>
+              <EmailActivityChart data={stats.emailActivity} />
+            </>
           )}
         </CardContent>
       </Card>
