@@ -35,7 +35,7 @@ const superAdminMenuItems = [
 ];
 
 function AppSidebar({ role }: { role?: "super_admin" | "admin" }) {
-  const [location] = useLocation();
+  const [location, setLocation] = useLocation();
   const menuItems = role === "super_admin" ? [...baseMenuItems, ...superAdminMenuItems] : baseMenuItems;
   const logoutMutation = useLogout();
   const queryClient = useQueryClient();
@@ -43,8 +43,16 @@ function AppSidebar({ role }: { role?: "super_admin" | "admin" }) {
   const handleLogout = () => {
     logoutMutation.mutate(undefined, {
       onSuccess: () => {
+        // Overwrite the cached session immediately rather than just
+        // invalidating it: invalidateQueries only *schedules* a refetch, and
+        // while that request is in flight (or if it fails, which the now-401
+        // /auth/me response does right after logout) React Query keeps
+        // serving the last successful — still logged-in — session data. That
+        // left AppLayout's effect never seeing loggedIn:false, so the
+        // redirect only happened after a manual refresh wiped the cache.
+        queryClient.setQueryData(getGetMeQueryKey(), { email: "", loggedIn: false });
         queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() });
-        // The AppLayout will redirect
+        setLocation("/login");
       }
     });
   };
