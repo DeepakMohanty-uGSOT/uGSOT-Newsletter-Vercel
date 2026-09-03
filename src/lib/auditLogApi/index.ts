@@ -29,6 +29,8 @@ export interface AuditLogParams {
   pageSize?: number;
   targetType?: string;
   targetId?: string | number;
+  action?: string;
+  adminEmail?: string;
 }
 
 function toQueryString(params: AuditLogParams): string {
@@ -37,6 +39,8 @@ function toQueryString(params: AuditLogParams): string {
   if (params.pageSize) query.set("pageSize", String(params.pageSize));
   if (params.targetType) query.set("targetType", params.targetType);
   if (params.targetId != null) query.set("targetId", String(params.targetId));
+  if (params.action) query.set("action", params.action);
+  if (params.adminEmail) query.set("adminEmail", params.adminEmail);
   const qs = query.toString();
   return qs ? `?${qs}` : "";
 }

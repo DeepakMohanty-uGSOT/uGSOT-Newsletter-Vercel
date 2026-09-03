@@ -1,13 +1,15 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useGetMe, getGetMeQueryKey } from "@/lib/api-client";
 import { useListAuditLogs, type AuditLogEntry } from "@/lib/auditLogApi";
-import { History, ShieldCheck } from "lucide-react";
+import { History, ShieldCheck, X } from "lucide-react";
 import { format } from "date-fns";
 
 const ACTION_LABELS: Record<string, string> = {
@@ -28,6 +30,13 @@ const ACTION_LABELS: Record<string, string> = {
   "newsletter.delete": "Deleted newsletter",
   "newsletter.send": "Sent newsletter",
 };
+
+const TARGET_TYPES: { value: string; label: string }[] = [
+  { value: "theme", label: "Theme" },
+  { value: "employee", label: "Employee" },
+  { value: "admin", label: "Admin" },
+  { value: "newsletter", label: "Newsletter" },
+];
 
 function actionVariant(action: string): "default" | "destructive" | "secondary" {
   if (action.endsWith(".delete") || action === "employee.bulk_delete") return "destructive";
@@ -70,7 +79,43 @@ export default function AuditLog() {
   const [page, setPage] = useState(1);
   const pageSize = 25;
 
-  const { data, isLoading } = useListAuditLogs({ page, pageSize }, { enabled: isSuperAdmin });
+  const [actionFilter, setActionFilter] = useState("all");
+  const [targetTypeFilter, setTargetTypeFilter] = useState("all");
+  const [adminEmailInput, setAdminEmailInput] = useState("");
+  const [adminEmailFilter, setAdminEmailFilter] = useState("");
+
+  // Debounce the admin-email text filter so it does not fire a request on
+  // every keystroke.
+  useEffect(() => {
+    const timeout = setTimeout(() => setAdminEmailFilter(adminEmailInput.trim()), 400);
+    return () => clearTimeout(timeout);
+  }, [adminEmailInput]);
+
+  // Any filter change should jump back to page 1 — staying on page 4 of an
+  // old result set after narrowing the filters would just show "no more
+  // results" instead of the newly-filtered first page.
+  useEffect(() => {
+    setPage(1);
+  }, [actionFilter, targetTypeFilter, adminEmailFilter]);
+
+  const hasActiveFilters = actionFilter !== "all" || targetTypeFilter !== "all" || adminEmailFilter !== "";
+  const resetFilters = () => {
+    setActionFilter("all");
+    setTargetTypeFilter("all");
+    setAdminEmailInput("");
+    setAdminEmailFilter("");
+  };
+
+  const { data, isLoading } = useListAuditLogs(
+    {
+      page,
+      pageSize,
+      action: actionFilter === "all" ? undefined : actionFilter,
+      targetType: targetTypeFilter === "all" ? undefined : targetTypeFilter,
+      adminEmail: adminEmailFilter || undefined,
+    },
+    { enabled: isSuperAdmin }
+  );
 
   if (!isSuperAdmin) {
     return (
@@ -108,6 +153,55 @@ export default function AuditLog() {
           <CardHeader>
             <CardTitle>Recent activity</CardTitle>
             <CardDescription>Most recent actions first.</CardDescription>
+            <div className="flex flex-wrap items-end gap-3 pt-2">
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-muted-foreground">Action</label>
+                <Select value={actionFilter} onValueChange={setActionFilter}>
+                  <SelectTrigger className="h-9 w-[190px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All actions</SelectItem>
+                    {Object.entries(ACTION_LABELS).map(([value, label]) => (
+                      <SelectItem key={value} value={value}>
+                        {label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-muted-foreground">Target type</label>
+                <Select value={targetTypeFilter} onValueChange={setTargetTypeFilter}>
+                  <SelectTrigger className="h-9 w-[160px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All targets</SelectItem>
+                    {TARGET_TYPES.map((t) => (
+                      <SelectItem key={t.value} value={t.value}>
+                        {t.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-muted-foreground">Admin</label>
+                <Input
+                  className="h-9 w-[200px]"
+                  placeholder="Search by admin email"
+                  value={adminEmailInput}
+                  onChange={(e) => setAdminEmailInput(e.target.value)}
+                />
+              </div>
+              {hasActiveFilters && (
+                <Button variant="ghost" size="sm" className="h-9 gap-1.5" onClick={resetFilters}>
+                  <X className="h-3.5 w-3.5" />
+                  Clear filters
+                </Button>
+              )}
+            </div>
           </CardHeader>
           <CardContent className="p-0">
             <Table>
@@ -134,7 +228,7 @@ export default function AuditLog() {
                 ) : !data?.logs?.length ? (
                   <TableRow>
                     <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
-                      No activity recorded yet.
+                      {hasActiveFilters ? "No activity matches these filters." : "No activity recorded yet."}
                     </TableCell>
                   </TableRow>
                 ) : (

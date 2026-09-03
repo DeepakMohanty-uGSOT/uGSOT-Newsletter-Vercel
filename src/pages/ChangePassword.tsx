@@ -8,6 +8,7 @@ import { useChangePassword } from "@/lib/adminApi";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Button } from "@/components/ui/button";
 import { GraduationCap, Loader2 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -112,7 +113,7 @@ export default function ChangePassword() {
                     <FormItem>
                       <FormLabel>{isForced ? "Temporary password" : "Current password"}</FormLabel>
                       <FormControl>
-                        <Input type="password" placeholder="••••••••" {...field} />
+                        <PasswordInput placeholder="••••••••" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -125,7 +126,7 @@ export default function ChangePassword() {
                     <FormItem>
                       <FormLabel>New password</FormLabel>
                       <FormControl>
-                        <Input type="password" placeholder="••••••••" {...field} />
+                        <PasswordInput placeholder="••••••••" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -138,7 +139,7 @@ export default function ChangePassword() {
                     <FormItem>
                       <FormLabel>Confirm new password</FormLabel>
                       <FormControl>
-                        <Input type="password" placeholder="••••••••" {...field} />
+                        <PasswordInput placeholder="••••••••" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
