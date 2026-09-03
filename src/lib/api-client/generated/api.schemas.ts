@@ -60,6 +60,10 @@ export interface Newsletter {
   totalSent?: number | null;
   /** @nullable */
   totalFailed?: number | null;
+  /** @nullable */
+  lastSentByAdminEmail?: string | null;
+  /** @nullable */
+  lastSentAt?: string | null;
 }
 
 export interface NewsletterListResponse {

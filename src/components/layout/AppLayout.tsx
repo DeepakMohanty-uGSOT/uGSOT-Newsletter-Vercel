@@ -1,6 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { useGetMe, getGetMeQueryKey, useLogout } from "@/lib/api-client";
-import { LayoutDashboard, Users, Mail, Settings, LogOut, FileText, GraduationCap, Loader2, ShieldCheck, Palette } from "lucide-react";
+import { LayoutDashboard, Users, Mail, Settings, LogOut, FileText, GraduationCap, Loader2, ShieldCheck, Palette, History } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Sidebar,
@@ -31,6 +31,7 @@ const baseMenuItems = [
 const superAdminMenuItems = [
   { title: "Themes", icon: Palette, url: "/themes" },
   { title: "Users", icon: ShieldCheck, url: "/users" },
+  { title: "Audit Log", icon: History, url: "/audit-log" },
 ];
 
 function AppSidebar({ role }: { role?: "super_admin" | "admin" }) {

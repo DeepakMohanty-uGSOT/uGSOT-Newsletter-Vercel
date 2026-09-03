@@ -9,6 +9,11 @@ export const newslettersTable = pgTable("newsletters", {
   pdfUrl: text("pdf_url").notNull(),
   themeId: integer("theme_id"),
   uploadedAt: timestamp("uploaded_at", { withTimezone: true }).notNull().defaultNow(),
+  // Who most recently triggered a send for this newsletter, and when. Full
+  // send-by-send history lives in audit_logs; these two columns just let the
+  // newsletter detail page show the latest sender without an extra query.
+  lastSentByAdminEmail: text("last_sent_by_admin_email"),
+  lastSentAt: timestamp("last_sent_at", { withTimezone: true }),
 });
 
 // Hand-written rather than `createInsertSchema(newslettersTable)` — see

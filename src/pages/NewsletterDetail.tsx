@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
-import { ChevronLeft, Download, FileText, BarChart3, Clock, AlertCircle, Eye } from "lucide-react";
+import { ChevronLeft, Download, FileText, BarChart3, Clock, AlertCircle, Eye, Send } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { usePreviewNewsletter } from "@/lib/themeApi";
 import { format } from "date-fns";
@@ -75,6 +75,12 @@ export default function NewsletterDetail() {
                 <Clock className="mr-1 h-3 w-3" />
                 Uploaded {format(new Date(newsletter.uploadedAt), "PPP")}
               </span>
+              {newsletter.lastSentByAdminEmail && newsletter.lastSentAt && (
+                <span className="flex items-center">
+                  <Send className="mr-1 h-3 w-3" />
+                  Last sent by {newsletter.lastSentByAdminEmail} on {format(new Date(newsletter.lastSentAt), "PPP")}
+                </span>
+              )}
             </div>
             {newsletter.description && (
               <p className="mt-4 max-w-3xl">{newsletter.description}</p>

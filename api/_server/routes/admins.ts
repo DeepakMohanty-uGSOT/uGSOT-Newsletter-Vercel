@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { db, adminsTable } from "../../_lib/db/index.js";
 import { requireAuth } from "../middlewares/requireAuth.js";
 import { requireSuperAdmin } from "../middlewares/requireSuperAdmin.js";
+import { logAudit } from "../lib/auditLog.js";
 
 const router: IRouter = Router();
 
@@ -72,6 +73,7 @@ router.post("/admins", requireAuth, requireSuperAdmin, async (req, res): Promise
     { createdEmail: email, role: resolvedRole, by: getRequesterEmail(req) },
     "New admin created",
   );
+  await logAudit(req, { action: "admin.create", targetType: "admin", targetId: created.id, targetLabel: email, metadata: { role: resolvedRole } });
   res.status(201).json(created);
 });
 
@@ -111,6 +113,13 @@ router.patch("/admins/:id/active", requireAuth, requireSuperAdmin, async (req, r
     .returning(ADMIN_PUBLIC_COLUMNS);
 
   req.log.info({ targetEmail: target.email, isActive, by: getRequesterEmail(req) }, "Admin active status changed");
+  await logAudit(req, {
+    action: "admin.status_change",
+    targetType: "admin",
+    targetId: id,
+    targetLabel: target.email,
+    metadata: { isActive },
+  });
   res.json(updated);
 });
 
@@ -164,6 +173,13 @@ router.patch("/admins/:id/role", requireAuth, requireSuperAdmin, async (req, res
     { targetEmail: target.email, newRole: role, by: getRequesterEmail(req) },
     "Admin role changed",
   );
+  await logAudit(req, {
+    action: "admin.role_change",
+    targetType: "admin",
+    targetId: id,
+    targetLabel: target.email,
+    metadata: { fromRole: target.role, toRole: role },
+  });
   res.json(updated);
 });
 
@@ -193,6 +209,7 @@ router.delete("/admins/:id", requireAuth, requireSuperAdmin, async (req, res): P
   await db.delete(adminsTable).where(eq(adminsTable.id, id));
 
   req.log.info({ deletedEmail: target.email, by: getRequesterEmail(req) }, "Admin deleted");
+  await logAudit(req, { action: "admin.delete", targetType: "admin", targetId: id, targetLabel: target.email });
   res.json({ message: "Admin deleted" });
 });
 

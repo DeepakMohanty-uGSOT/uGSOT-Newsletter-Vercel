@@ -7,6 +7,7 @@ import emailLogsRouter from "./emailLogs.js";
 import dashboardRouter from "./dashboard.js";
 import adminsRouter from "./admins.js";
 import themesRouter from "./themes.js";
+import auditLogsRouter from "./auditLogs.js";
 
 const router: IRouter = Router();
 
@@ -18,5 +19,6 @@ router.use(emailLogsRouter);
 router.use(dashboardRouter);
 router.use(adminsRouter);
 router.use(themesRouter);
+router.use(auditLogsRouter);
 
 export default router;

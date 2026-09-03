@@ -4,6 +4,7 @@ import * as XLSX from "xlsx";
 import { db, employeesTable } from "../../_lib/db/index.js";
 import { eq, ilike, or, count, sql, inArray } from "drizzle-orm";
 import { requireAuth } from "../middlewares/requireAuth.js";
+import { logAudit } from "../lib/auditLog.js";
 
 const router: IRouter = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
@@ -104,6 +105,7 @@ router.post("/employees", requireAuth, async (req, res): Promise<void> => {
       .insert(employeesTable)
       .values({ employeeName: name, employeeEmail: email })
       .returning();
+    await logAudit(req, { action: "employee.create", targetType: "employee", targetId: created.id, targetLabel: created.employeeEmail });
     res.status(201).json(created);
   } catch (err) {
     req.log.error({ err, name, email }, "Failed to create employee");
@@ -149,6 +151,7 @@ router.patch("/employees/:id", requireAuth, async (req, res): Promise<void> => {
       res.status(404).json({ error: "Employee not found" });
       return;
     }
+    await logAudit(req, { action: "employee.update", targetType: "employee", targetId: id, targetLabel: updated.employeeEmail });
     res.json(updated);
   } catch (err) {
     req.log.error({ err, id }, "Failed to update employee");
@@ -166,6 +169,13 @@ router.post("/employees/bulk-delete", requireAuth, async (req, res): Promise<voi
 
   try {
     const deleted = await db.delete(employeesTable).where(inArray(employeesTable.id, ids)).returning();
+    await logAudit(req, {
+      action: "employee.bulk_delete",
+      targetType: "employee",
+      targetId: null,
+      targetLabel: `${deleted.length} employee(s)`,
+      metadata: { deletedCount: deleted.length, ids },
+    });
     res.json({ message: "Employees deleted", deletedCount: deleted.length });
   } catch (err) {
     req.log.error({ err, ids }, "Failed to bulk delete employees");
@@ -197,6 +207,7 @@ router.delete("/employees/:id", requireAuth, async (req, res): Promise<void> => 
       res.status(404).json({ error: "Employee not found" });
       return;
     }
+    await logAudit(req, { action: "employee.delete", targetType: "employee", targetId: id, targetLabel: deleted.employeeEmail });
     res.json({ message: "Employee deleted" });
   } catch (err) {
     req.log.error({ err, id }, "Failed to delete employee");

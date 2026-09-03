@@ -3,3 +3,4 @@ export * from "./newsletters.js";
 export * from "./emailLogs.js";
 export * from "./admins.js";
 export * from "./themes.js";
+export * from "./auditLogs.js";

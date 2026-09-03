@@ -18,4 +18,8 @@ export interface Newsletter {
   totalSent?: number | null;
   /** @nullable */
   totalFailed?: number | null;
+  /** @nullable */
+  lastSentByAdminEmail?: string | null;
+  /** @nullable */
+  lastSentAt?: Date | null;
 }

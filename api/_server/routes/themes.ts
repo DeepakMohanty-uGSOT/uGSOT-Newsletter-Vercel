@@ -4,6 +4,7 @@ import { db, themesTable } from "../../_lib/db/index.js";
 import { requireAuth } from "../middlewares/requireAuth.js";
 import { requireSuperAdmin } from "../middlewares/requireSuperAdmin.js";
 import { renderDefaultTemplate } from "./newsletters.js";
+import { logAudit } from "../lib/auditLog.js";
 
 const router: IRouter = Router();
 
@@ -56,6 +57,7 @@ router.post("/themes", requireAuth, requireSuperAdmin, async (req, res): Promise
     .returning();
 
   req.log.info({ theme: name }, "Theme created");
+  await logAudit(req, { action: "theme.create", targetType: "theme", targetId: created.id, targetLabel: created.name });
   res.status(201).json(created);
 });
 
@@ -101,6 +103,7 @@ router.patch("/themes/:id", requireAuth, requireSuperAdmin, async (req, res): Pr
     .returning();
 
   req.log.info({ themeId: id }, "Theme updated");
+  await logAudit(req, { action: "theme.update", targetType: "theme", targetId: id, targetLabel: updated.name });
   res.json(updated);
 });
 
@@ -124,6 +127,7 @@ router.patch("/themes/:id/activate", requireAuth, requireSuperAdmin, async (req,
   const [updated] = await db.update(themesTable).set({ isActive: true }).where(eq(themesTable.id, id)).returning();
 
   req.log.info({ themeId: id }, "Theme activated");
+  await logAudit(req, { action: "theme.activate", targetType: "theme", targetId: id, targetLabel: updated.name });
   res.json(updated);
 });
 
@@ -151,6 +155,7 @@ router.delete("/themes/:id", requireAuth, requireSuperAdmin, async (req, res): P
   // same as "use whatever theme is currently active."
 
   req.log.info({ themeId: id }, "Theme deleted");
+  await logAudit(req, { action: "theme.delete", targetType: "theme", targetId: id, targetLabel: target.name });
   res.json({ message: "Theme deleted" });
 });
 

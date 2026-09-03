@@ -4,6 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 import { db, newslettersTable, employeesTable, emailLogsTable, themesTable } from "../../_lib/db/index.js";
 import { eq, count, sql, desc } from "drizzle-orm";
 import { requireAuth } from "../middlewares/requireAuth.js";
+import { logAudit } from "../lib/auditLog.js";
 import { logger } from "../lib/logger.js";
 import { randomUUID } from "crypto";
 
@@ -547,6 +548,8 @@ router.get("/newsletters", requireAuth, async (req, res): Promise<void> => {
           uploadedAt: newslettersTable.uploadedAt,
           totalSent: sql<number>`cast(count(case when ${emailLogsTable.deliveryStatus} = 'sent' then 1 end) as int)`,
           totalFailed: sql<number>`cast(count(case when ${emailLogsTable.deliveryStatus} = 'failed' then 1 end) as int)`,
+          lastSentByAdminEmail: newslettersTable.lastSentByAdminEmail,
+          lastSentAt: newslettersTable.lastSentAt,
         })
         .from(newslettersTable)
         .leftJoin(emailLogsTable, eq(newslettersTable.id, emailLogsTable.newsletterId))
@@ -606,6 +609,7 @@ router.post("/newsletters/upload", requireAuth, upload.single("pdf"), async (req
     .returning();
 
   req.log.info({ newsletterId: newsletter.id }, "Newsletter created");
+  await logAudit(req, { action: "newsletter.upload", targetType: "newsletter", targetId: newsletter.id, targetLabel: newsletter.title });
   res.status(201).json({ ...newsletter, totalSent: 0, totalFailed: 0 });
 });
 
@@ -625,6 +629,8 @@ router.get("/newsletters/:id", requireAuth, async (req, res): Promise<void> => {
       uploadedAt: newslettersTable.uploadedAt,
       totalSent: sql<number>`cast(count(case when ${emailLogsTable.deliveryStatus} = 'sent' then 1 end) as int)`,
       totalFailed: sql<number>`cast(count(case when ${emailLogsTable.deliveryStatus} = 'failed' then 1 end) as int)`,
+      lastSentByAdminEmail: newslettersTable.lastSentByAdminEmail,
+      lastSentAt: newslettersTable.lastSentAt,
     })
     .from(newslettersTable)
     .leftJoin(emailLogsTable, eq(newslettersTable.id, emailLogsTable.newsletterId))
@@ -642,6 +648,8 @@ router.delete("/newsletters/:id", requireAuth, async (req, res): Promise<void> =
 
   const [deleted] = await db.delete(newslettersTable).where(eq(newslettersTable.id, id)).returning();
   if (!deleted) { res.status(404).json({ error: "Newsletter not found" }); return; }
+
+  await logAudit(req, { action: "newsletter.delete", targetType: "newsletter", targetId: id, targetLabel: deleted.title });
 
   try {
     const storagePath = normalizeStoragePath(deleted.pdfUrl);
@@ -677,6 +685,19 @@ router.post("/newsletters/:id/send", requireAuth, async (req, res): Promise<void
   const theme = await getThemeForNewsletter(newsletter.themeId);
   const { sent, failed } = await sendNewsletterEmails(id, newsletter, theme, cleanEmails);
   req.log.info({ newsletterId: id, sent, failed }, "Newsletter send complete");
+
+  const senderEmail = (req as { adminEmail?: string }).adminEmail ?? null;
+  await db
+    .update(newslettersTable)
+    .set({ lastSentByAdminEmail: senderEmail, lastSentAt: new Date() })
+    .where(eq(newslettersTable.id, id));
+  await logAudit(req, {
+    action: "newsletter.send",
+    targetType: "newsletter",
+    targetId: id,
+    targetLabel: newsletter.title,
+    metadata: { sent, failed, total, customRecipients: Boolean(cleanEmails && cleanEmails.length > 0) },
+  });
 
   res.json({ sent, failed, total });
 });
