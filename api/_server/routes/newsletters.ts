@@ -89,6 +89,55 @@ async function getThemeForNewsletter(themeId: number | null) {
   return active ?? FALLBACK_THEME;
 }
 
+// Returns the theme a given newsletter should actually render/send with.
+//
+// Newsletters used to just store a themeId and look the theme up live every
+// time, which meant editing an existing theme's colors/HTML on the Themes
+// page silently changed how *every* newsletter that ever used it looked —
+// including ones already sent to employees. That's wrong: once a newsletter
+// has gone out, its appearance shouldn't shift under it later.
+//
+// Newsletters now freeze a snapshot of the resolved theme (see
+// themeSnapshot on the schema) the first time this is called for them, and
+// every subsequent call reuses that frozen copy instead of re-resolving
+// against the (possibly since-edited) themes table.
+async function getEffectiveTheme(newsletter: {
+  id: number;
+  themeId: number | null;
+  themeSnapshot: string | null;
+}): Promise<ThemeLike> {
+  if (newsletter.themeSnapshot) {
+    try {
+      return JSON.parse(newsletter.themeSnapshot) as ThemeLike;
+    } catch {
+      // Fall through and re-resolve/re-snapshot if the stored JSON is somehow bad.
+    }
+  }
+
+  // No snapshot yet -- this newsletter predates snapshotting. Resolve it
+  // deterministically instead of calling getThemeForNewsletter(): that
+  // function falls back to "whichever theme is currently marked active",
+  // which is exactly the moving target this whole mechanism exists to
+  // avoid (e.g. someone activates an unrelated demo/sample theme months
+  // later and an old, already-sent newsletter's preview suddenly "becomes"
+  // that theme). Honor an explicit themeId if this newsletter has one;
+  // otherwise use the original built-in uGSOT look, never "today's active
+  // theme".
+  let theme: ThemeLike;
+  if (newsletter.themeId) {
+    const [byId] = await db.select().from(themesTable).where(eq(themesTable.id, newsletter.themeId));
+    theme = byId ?? FALLBACK_THEME;
+  } else {
+    theme = FALLBACK_THEME;
+  }
+
+  await db
+    .update(newslettersTable)
+    .set({ themeSnapshot: JSON.stringify(theme) })
+    .where(eq(newslettersTable.id, newsletter.id));
+  return theme;
+}
+
 // ---------------------------------------------------------------------------
 // Email HTML builder
 // ---------------------------------------------------------------------------
@@ -603,9 +652,21 @@ router.post("/newsletters/upload", requireAuth, upload.single("pdf"), async (req
     themeId = active?.id ?? null;
   }
 
+  // Freeze the resolved theme right now, at upload time -- this is the
+  // look this newsletter will always have, even if the theme it used gets
+  // edited later (see getEffectiveTheme for why).
+  const resolvedTheme = await getThemeForNewsletter(themeId);
+
   const [newsletter] = await db
     .insert(newslettersTable)
-    .values({ title, topic, description: description || null, pdfUrl, themeId })
+    .values({
+      title,
+      topic,
+      description: description || null,
+      pdfUrl,
+      themeId,
+      themeSnapshot: JSON.stringify(resolvedTheme),
+    })
     .returning();
 
   req.log.info({ newsletterId: newsletter.id }, "Newsletter created");
@@ -682,7 +743,7 @@ router.post("/newsletters/:id/send", requireAuth, async (req, res): Promise<void
     req.log.info({ newsletterId: id, employees: total }, "Starting newsletter send to all employees");
   }
 
-  const theme = await getThemeForNewsletter(newsletter.themeId);
+  const theme = await getEffectiveTheme(newsletter);
   const { sent, failed } = await sendNewsletterEmails(id, newsletter, theme, cleanEmails);
   req.log.info({ newsletterId: id, sent, failed }, "Newsletter send complete");
 
@@ -712,7 +773,7 @@ router.get("/newsletters/:id/preview", requireAuth, async (req, res): Promise<vo
   const [newsletter] = await db.select().from(newslettersTable).where(eq(newslettersTable.id, id));
   if (!newsletter) { res.status(404).json({ error: "Newsletter not found" }); return; }
 
-  const theme = await getThemeForNewsletter(newsletter.themeId);
+  const theme = await getEffectiveTheme(newsletter);
   const html = buildEmailHtml("Employee Name", "employee@example.com", newsletter, theme);
   res.json({ html });
 });

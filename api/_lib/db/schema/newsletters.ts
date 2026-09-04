@@ -14,6 +14,10 @@ export const newslettersTable = pgTable("newsletters", {
   // newsletter detail page show the latest sender without an extra query.
   lastSentByAdminEmail: text("last_sent_by_admin_email"),
   lastSentAt: timestamp("last_sent_at", { withTimezone: true }),
+  // Frozen copy (JSON-encoded ThemeLike) of the theme actually used at
+  // upload time, so editing that theme afterwards never changes how an
+  // already-uploaded newsletter renders in Preview or on resend.
+  themeSnapshot: text("theme_snapshot"),
 });
 
 // Hand-written rather than `createInsertSchema(newslettersTable)` — see
