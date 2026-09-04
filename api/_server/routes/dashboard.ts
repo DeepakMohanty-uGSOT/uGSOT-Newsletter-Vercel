@@ -1,16 +1,12 @@
 import { Router, type IRouter } from "express";
 import { db, employeesTable, newslettersTable, emailLogsTable, adminsTable } from "../../_lib/db/index.js";
-import { count, eq, desc, gte, sql } from "drizzle-orm";
+import { count, eq, desc, sql } from "drizzle-orm";
 import { requireAuth } from "../middlewares/requireAuth.js";
 
 const router: IRouter = Router();
 
 router.get("/dashboard/stats", requireAuth, async (req, res): Promise<void> => {
   try {
-    const fourteenDaysAgo = new Date();
-    fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 13);
-    fourteenDaysAgo.setHours(0, 0, 0, 0);
-
     const [
       [{ count: totalEmployees }],
       [{ count: totalNewsletters }],
@@ -36,14 +32,13 @@ router.get("/dashboard/stats", requireAuth, async (req, res): Promise<void> => {
         .orderBy(desc(sql`count(*)`)),
       db
         .select({
-          day: sql<string>`to_char(${emailLogsTable.sentAt}, 'YYYY-MM-DD')`,
+          month: sql<string>`to_char(${emailLogsTable.sentAt}, 'YYYY-MM')`,
           sent: sql<number>`cast(count(case when ${emailLogsTable.deliveryStatus} = 'sent' then 1 end) as int)`,
           failed: sql<number>`cast(count(case when ${emailLogsTable.deliveryStatus} = 'failed' then 1 end) as int)`,
         })
         .from(emailLogsTable)
-        .where(gte(emailLogsTable.sentAt, fourteenDaysAgo))
-        .groupBy(sql`to_char(${emailLogsTable.sentAt}, 'YYYY-MM-DD')`)
-        .orderBy(sql`to_char(${emailLogsTable.sentAt}, 'YYYY-MM-DD')`),
+        .groupBy(sql`to_char(${emailLogsTable.sentAt}, 'YYYY-MM')`)
+        .orderBy(sql`to_char(${emailLogsTable.sentAt}, 'YYYY-MM')`),
       db
         .select({
           id: newslettersTable.id,
@@ -94,17 +89,23 @@ router.get("/dashboard/stats", requireAuth, async (req, res): Promise<void> => {
     const topicBreakdown =
       otherTopicsCount > 0 ? [...topTopics, { topic: "Other", count: otherTopicsCount }] : topTopics;
 
-    // Fill in every day of the 14-day window (even ones with zero email
-    // activity) so the trend chart renders a continuous, evenly-spaced axis
-    // instead of skipping quiet days.
-    const activityByDay = new Map(emailActivityRaw.map((row) => [row.day, row]));
+    // Full history, grouped by month (not just a recent window) so the
+    // trend chart reflects everything on record; gaps between the first
+    // and most recent month are zero-filled for a continuous axis.
+    const activityByMonth = new Map(emailActivityRaw.map((row) => [row.month, row]));
     const emailActivity: { date: string; sent: number; failed: number }[] = [];
-    for (let i = 0; i < 14; i++) {
-      const d = new Date(fourteenDaysAgo);
-      d.setDate(d.getDate() + i);
-      const key = d.toISOString().slice(0, 10);
-      const row = activityByDay.get(key);
-      emailActivity.push({ date: key, sent: row ? Number(row.sent) : 0, failed: row ? Number(row.failed) : 0 });
+    if (emailActivityRaw.length > 0) {
+      const firstMonth = emailActivityRaw[0].month;
+      const [startYear, startMonthNum] = firstMonth.split("-").map(Number);
+      const cursor = new Date(startYear, startMonthNum - 1, 1);
+      const now = new Date();
+      const end = new Date(now.getFullYear(), now.getMonth(), 1);
+      while (cursor <= end) {
+        const key = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}`;
+        const row = activityByMonth.get(key);
+        emailActivity.push({ date: key, sent: row ? Number(row.sent) : 0, failed: row ? Number(row.failed) : 0 });
+        cursor.setMonth(cursor.getMonth() + 1);
+      }
     }
 
     res.json({

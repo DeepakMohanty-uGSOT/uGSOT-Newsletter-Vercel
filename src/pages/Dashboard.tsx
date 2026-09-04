@@ -1,6 +1,9 @@
+import { useState } from "react";
 import { useGetDashboardStats, getGetDashboardStatsQueryKey } from "@/lib/api-client";
+import { useEmailLogSummary } from "@/lib/emailLogSummaryApi";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
@@ -67,7 +70,10 @@ function DeliveryRateGauge({
 function EmailActivityChart({ data }: { data: { date: string; sent: number; failed: number }[] }) {
   const chartData = data.map((d) => ({
     ...d,
-    label: format(new Date(`${d.date}T00:00:00`), "MMM d"),
+    label:
+      d.date.length === 7
+        ? format(new Date(`${d.date}-01T00:00:00`), "MMM yyyy")
+        : format(new Date(`${d.date}T00:00:00`), "MMM d"),
   }));
 
   return (
@@ -92,8 +98,12 @@ function EmailActivityChart({ data }: { data: { date: string; sent: number; fail
 
 export default function Dashboard() {
   const { data: stats, isLoading } = useGetDashboardStats({ query: { queryKey: getGetDashboardStatsQueryKey() } });
+  const [activityMonth, setActivityMonth] = useState<string>(() => format(new Date(), "yyyy-MM"));
+  const { data: activitySummary, isLoading: isActivityLoading } = useEmailLogSummary(activityMonth);
 
   const totalEmails = (stats?.totalEmailsSent ?? 0) + (stats?.totalEmailsFailed ?? 0) + (stats?.totalEmailsPending ?? 0);
+
+  const activityDays = [...(activitySummary?.days ?? [])].sort((a, b) => a.date.localeCompare(b.date));
 
   return (
     <AppLayout>
@@ -208,19 +218,40 @@ export default function Dashboard() {
       </Card>
 
       <Card className="rounded-xl shadow-sm mb-8">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
-            Email Activity — Last 14 Days
-          </CardTitle>
-          <CardDescription>Daily sent vs. failed volume, so spikes or delivery issues stand out early.</CardDescription>
+        <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <TrendingUp className="h-4 w-4 text-muted-foreground" />
+              Email Activity
+            </CardTitle>
+            <CardDescription>
+              Day-by-day sent vs. failed volume for the selected month — see exactly which days newsletters went out and how many emails each send covered.
+            </CardDescription>
+          </div>
+          <div className="w-full sm:w-48">
+            <Select value={activityMonth} onValueChange={setActivityMonth}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select month" />
+              </SelectTrigger>
+              <SelectContent>
+                {(activitySummary?.months?.some((m) => m.month === activityMonth)
+                  ? activitySummary.months
+                  : [{ month: activityMonth, sent: 0, failed: 0, pending: 0, total: 0 }, ...(activitySummary?.months ?? [])]
+                ).map((m) => (
+                  <SelectItem key={m.month} value={m.month}>
+                    {format(new Date(`${m.month}-01T00:00:00`), "MMMM yyyy")}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
+          {isActivityLoading ? (
             <Skeleton className="h-[220px] w-full rounded-lg" />
-          ) : !stats?.emailActivity?.some((d) => d.sent + d.failed > 0) ? (
+          ) : !activityDays.some((d) => d.sent + d.failed > 0) ? (
             <div className="h-[160px] flex items-center justify-center text-sm text-muted-foreground">
-              No email activity in the last 14 days.
+              No email activity in {format(new Date(`${activityMonth}-01T00:00:00`), "MMMM yyyy")}.
             </div>
           ) : (
             <>
@@ -234,7 +265,19 @@ export default function Dashboard() {
                   Failed
                 </span>
               </div>
-              <EmailActivityChart data={stats.emailActivity} />
+              <EmailActivityChart data={activityDays} />
+              <div className="mt-3 flex flex-wrap gap-2">
+                {activityDays
+                  .filter((d) => d.total > 0)
+                  .map((d) => (
+                    <div key={d.date} className="rounded-md border px-2.5 py-1.5 text-xs">
+                      <span className="font-medium">{format(new Date(`${d.date}T00:00:00`), "MMM d")}</span>
+                      <span className="text-muted-foreground">
+                        {" "}— {d.sent} sent{d.failed > 0 ? `, ${d.failed} failed` : ""} across {d.newsletters} newsletter{d.newsletters === 1 ? "" : "s"}
+                      </span>
+                    </div>
+                  ))}
+              </div>
             </>
           )}
         </CardContent>
