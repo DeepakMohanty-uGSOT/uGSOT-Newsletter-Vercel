@@ -31,3 +31,6 @@ yarn-error.log
 # System files
 .DS_Store
 Thumbs.db
+
+# Database migration scripts — kept locally, never pushed to GitHub
+sql/
