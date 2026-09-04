@@ -309,3 +309,29 @@
     inset: -1px;
   }
 }
+
+/* Native <input type="date">/<input type="month"> pickers default to a
+   light-on-white internal rendering for their placeholder segments
+   (mm/dd/yyyy) and calendar-toggle icon, so they end up nearly invisible on
+   this app's dark inputs. `color-scheme: dark` tells the browser to render
+   those built-in parts (including the calendar/month popup itself) with a
+   dark palette that matches the site instead of the browser default light
+   one. The whole field is made explicitly clickable since these controls
+   otherwise only open their picker when the small icon itself is clicked in
+   some browsers. */
+.dark input[type="date"],
+.dark input[type="month"] {
+  color-scheme: dark;
+  cursor: pointer;
+}
+
+.dark input[type="date"]::-webkit-calendar-picker-indicator,
+.dark input[type="month"]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  opacity: 0.8;
+}
+
+.dark input[type="date"]::-webkit-calendar-picker-indicator:hover,
+.dark input[type="month"]::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
+}

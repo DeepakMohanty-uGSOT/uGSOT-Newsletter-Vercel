@@ -193,6 +193,7 @@ export default function EmailLogs() {
                 type="month"
                 value={monthFilter}
                 onChange={(e) => { setMonthFilter(e.target.value); setDateFilter(""); setPage(1); }}
+                onClick={(e) => { try { (e.currentTarget as HTMLInputElement & { showPicker?: () => void }).showPicker?.(); } catch { /* unsupported browser, ignore */ } }}
                 placeholder="Filter by month"
               />
             </div>
@@ -202,6 +203,7 @@ export default function EmailLogs() {
                 type="date"
                 value={dateFilter}
                 onChange={(e) => { setDateFilter(e.target.value); setMonthFilter(""); setPage(1); }}
+                onClick={(e) => { try { (e.currentTarget as HTMLInputElement & { showPicker?: () => void }).showPicker?.(); } catch { /* unsupported browser, ignore */ } }}
                 placeholder="Filter by date"
               />
             </div>
