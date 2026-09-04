@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -39,7 +39,7 @@ import {
   useDeleteTheme,
   type ThemeRecord,
 } from "@/lib/themeApi";
-import { Plus, Loader2, CheckCircle2, MoreVertical, Pencil, ShieldCheck } from "lucide-react";
+import { Plus, Loader2, CheckCircle2, MoreVertical, Pencil, ShieldCheck, Upload } from "lucide-react";
 import { format } from "date-fns";
 
 const themeSchema = z.object({
@@ -91,6 +91,32 @@ export default function Themes() {
     resolver: zodResolver(themeSchema),
     defaultValues: { name: "", customHtml: "" },
   });
+
+  const htmlFileInputRef = useRef<HTMLInputElement>(null);
+
+  // Lets the HTML be authored elsewhere and dropped in wholesale, instead of
+  // pasting into the textarea. Read entirely client-side (FileReader) — no
+  // upload endpoint involved, it just fills in the same form field.
+  const handleHtmlFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith(".html") && !file.name.toLowerCase().endsWith(".htm") && file.type !== "text/html") {
+      toast({ title: "Not an HTML file", description: "Please choose a .html file.", variant: "destructive" });
+      e.target.value = "";
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const text = typeof reader.result === "string" ? reader.result : "";
+      form.setValue("customHtml", text, { shouldValidate: true, shouldDirty: true });
+      toast({ title: "HTML loaded", description: `Loaded ${file.name} into the editor.` });
+    };
+    reader.onerror = () => {
+      toast({ title: "Could not read file", description: "Something went wrong reading that file.", variant: "destructive" });
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  };
 
   const openCreate = () => {
     setEditing(null);
@@ -201,7 +227,26 @@ export default function Themes() {
                       name="customHtml"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Email HTML</FormLabel>
+                          <div className="flex items-center justify-between">
+                            <FormLabel>Email HTML</FormLabel>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="gap-1.5"
+                              onClick={() => htmlFileInputRef.current?.click()}
+                            >
+                              <Upload className="h-3.5 w-3.5" />
+                              Upload HTML File
+                            </Button>
+                            <input
+                              ref={htmlFileInputRef}
+                              type="file"
+                              accept=".html,.htm,text/html"
+                              className="hidden"
+                              onChange={handleHtmlFileChange}
+                            />
+                          </div>
                           <Tabs defaultValue="edit">
                             <TabsList className="grid w-full grid-cols-2">
                               <TabsTrigger value="edit">Edit HTML</TabsTrigger>
