@@ -39,7 +39,7 @@ import {
   useDeleteTheme,
   type ThemeRecord,
 } from "@/lib/themeApi";
-import { Plus, Loader2, CheckCircle2, MoreVertical, Pencil, ShieldCheck, Upload } from "lucide-react";
+import { Plus, Loader2, CheckCircle2, MoreVertical, Pencil, ShieldCheck, Upload, Maximize2 } from "lucide-react";
 import { format } from "date-fns";
 
 const themeSchema = z.object({
@@ -86,6 +86,7 @@ export default function Themes() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<ThemeRecord | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ThemeRecord | null>(null);
+  const [fullscreenPreviewOpen, setFullscreenPreviewOpen] = useState(false);
 
   const form = useForm<ThemeFormValues>({
     resolver: zodResolver(themeSchema),
@@ -258,6 +259,18 @@ export default function Themes() {
                               </FormControl>
                             </TabsContent>
                             <TabsContent value="preview">
+                              <div className="mb-2 flex justify-end">
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  className="gap-1.5"
+                                  onClick={() => setFullscreenPreviewOpen(true)}
+                                >
+                                  <Maximize2 className="h-3.5 w-3.5" />
+                                  Full Screen
+                                </Button>
+                              </div>
                               <div className="border rounded-md overflow-hidden bg-white">
                                 <iframe
                                   title="Theme preview"
@@ -268,6 +281,23 @@ export default function Themes() {
                               <p className="mt-2 text-xs text-muted-foreground">
                                 Rendered with sample recipient/newsletter data so you can see the real layout.
                               </p>
+                              <Dialog open={fullscreenPreviewOpen} onOpenChange={setFullscreenPreviewOpen}>
+                                <DialogContent className="max-w-[95vw] w-[95vw] h-[92vh] flex flex-col p-0 gap-0 sm:rounded-lg">
+                                  <DialogHeader className="px-6 py-4 border-b">
+                                    <DialogTitle>Full screen preview</DialogTitle>
+                                    <DialogDescription>
+                                      Rendered with sample recipient/newsletter data so you can see the real layout.
+                                    </DialogDescription>
+                                  </DialogHeader>
+                                  <div className="flex-1 bg-white overflow-hidden">
+                                    <iframe
+                                      title="Theme preview (full screen)"
+                                      srcDoc={renderPreviewHtml(field.value || "")}
+                                      className="w-full h-full border-0"
+                                    />
+                                  </div>
+                                </DialogContent>
+                              </Dialog>
                             </TabsContent>
                           </Tabs>
                           <FormMessage />
