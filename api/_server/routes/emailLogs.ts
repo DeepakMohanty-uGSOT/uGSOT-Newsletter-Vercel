@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db, emailLogsTable, newslettersTable } from "../../_lib/db/index.js";
 import { eq, count, and, sql, type SQL } from "drizzle-orm";
+import * as XLSX from "xlsx";
 import { requireAuth } from "../middlewares/requireAuth.js";
 
 const router: IRouter = Router();
@@ -155,6 +156,67 @@ router.get("/email-logs/summary", requireAuth, async (req, res): Promise<void> =
   } catch (err) {
     req.log.error({ err }, "Failed to get email log summary");
     res.status(500).json({ error: "Failed to get email log summary" });
+  }
+});
+
+// Downloadable Excel export of email logs — same filters as the paginated
+// list above (newsletter, status, month, date), but every matching row in
+// one workbook instead of one page.
+router.get("/email-logs/export", requireAuth, async (req, res): Promise<void> => {
+  try {
+    const { newsletterId, status, month, date } = req.query as Record<string, string>;
+
+    const conditions: SQL<unknown>[] = [];
+    if (newsletterId) {
+      const nid = parseInt(newsletterId, 10);
+      if (!isNaN(nid)) conditions.push(eq(emailLogsTable.newsletterId, nid));
+    }
+    if (status && ["sent", "failed", "pending"].includes(status)) {
+      conditions.push(eq(emailLogsTable.deliveryStatus, status));
+    }
+    if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      conditions.push(sql`to_char(${emailLogsTable.sentAt}, 'YYYY-MM-DD') = ${date}`);
+    } else if (month && /^\d{4}-\d{2}$/.test(month)) {
+      conditions.push(sql`to_char(${emailLogsTable.sentAt}, 'YYYY-MM') = ${month}`);
+    }
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+    const logs = await db
+      .select({
+        employeeEmail: emailLogsTable.employeeEmail,
+        newsletterTitle: newslettersTable.title,
+        deliveryStatus: emailLogsTable.deliveryStatus,
+        sentAt: emailLogsTable.sentAt,
+        errorMessage: emailLogsTable.errorMessage,
+      })
+      .from(emailLogsTable)
+      .leftJoin(newslettersTable, eq(emailLogsTable.newsletterId, newslettersTable.id))
+      .where(whereClause)
+      .orderBy(sql`${emailLogsTable.sentAt} DESC`);
+
+    const rows = logs.map((log) => ({
+      "Employee Email": log.employeeEmail,
+      "Newsletter": log.newsletterTitle ?? "",
+      "Status": log.deliveryStatus,
+      "Sent At": new Date(log.sentAt).toISOString().replace("T", " ").slice(0, 19),
+      "Error": log.errorMessage ?? "",
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    worksheet["!cols"] = [{ wch: 28 }, { wch: 28 }, { wch: 12 }, { wch: 20 }, { wch: 40 }];
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Email Logs");
+    const buffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" }) as Buffer;
+
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="email-logs-${new Date().toISOString().slice(0, 10)}.xlsx"`,
+    );
+    res.send(buffer);
+  } catch (err) {
+    req.log.error({ err }, "Failed to export email logs");
+    res.status(500).json({ error: "Failed to export email logs" });
   }
 });
 

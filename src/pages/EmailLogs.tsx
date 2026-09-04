@@ -17,7 +17,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input";
 import { format } from "date-fns";
 import { Link } from "wouter";
-import { CalendarDays, X } from "lucide-react";
+import { CalendarDays, X, Download } from "lucide-react";
 
 function getInitialStatusFilter(): ListEmailLogsStatus | "all" {
   const status = new URLSearchParams(window.location.search).get("status");
@@ -53,6 +53,16 @@ export default function EmailLogs() {
   const { data, isLoading } = useListEmailLogs(listParams, {
     query: { queryKey: getListEmailLogsQueryKey(listParams) },
   });
+
+  const handleExport = () => {
+    const params = new URLSearchParams();
+    if (listParams.status) params.set("status", listParams.status);
+    if (listParams.newsletterId != null) params.set("newsletterId", String(listParams.newsletterId));
+    if (listParams.month) params.set("month", listParams.month);
+    if (listParams.date) params.set("date", listParams.date);
+    const qs = params.toString();
+    window.open(`/api/email-logs/export${qs ? `?${qs}` : ""}`, "_blank");
+  };
 
   const { data: summary, isLoading: isSummaryLoading } = useEmailLogSummary(summaryMonth);
 
@@ -202,6 +212,11 @@ export default function EmailLogs() {
                 Clear filters
               </Button>
             )}
+
+            <Button variant="outline" size="sm" onClick={handleExport} className="gap-1.5 sm:ml-auto">
+              <Download className="h-3.5 w-3.5" />
+              Export to Excel
+            </Button>
           </div>
         </CardHeader>
         <CardContent className="p-0">

@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { useGetMe, getGetMeQueryKey } from "@/lib/api-client";
 import { useListAuditLogs, type AuditLogEntry } from "@/lib/auditLogApi";
-import { History, ShieldCheck, X } from "lucide-react";
+import { History, ShieldCheck, X, Download } from "lucide-react";
 import { format } from "date-fns";
 
 const ACTION_LABELS: Record<string, string> = {
@@ -109,6 +109,15 @@ export default function AuditLog() {
     setAdminEmailFilter("");
   };
 
+  const handleExport = () => {
+    const params = new URLSearchParams();
+    if (targetTypeFilter !== "all") params.set("targetType", targetTypeFilter);
+    if (actionFilter !== "all") params.set("action", actionFilter);
+    if (adminEmailFilter) params.set("adminEmail", adminEmailFilter);
+    const qs = params.toString();
+    window.open(`/api/audit-logs/export${qs ? `?${qs}` : ""}`, "_blank");
+  };
+
   const { data, isLoading } = useListAuditLogs(
     {
       page,
@@ -204,6 +213,10 @@ export default function AuditLog() {
                   Clear filters
                 </Button>
               )}
+              <Button variant="outline" size="sm" className="h-9 gap-1.5 sm:ml-auto" onClick={handleExport}>
+                <Download className="h-3.5 w-3.5" />
+                Export to Excel
+              </Button>
             </div>
           </CardHeader>
           <CardContent className="p-0">
