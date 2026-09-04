@@ -31,6 +31,7 @@ export type AuditAction =
   | "admin.create"
   | "admin.status_change"
   | "admin.role_change"
+  | "admin.reset_password"
   | "admin.delete"
   | "newsletter.upload"
   | "newsletter.delete"

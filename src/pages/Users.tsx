@@ -30,8 +30,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
 import { useGetMe, getGetMeQueryKey } from "@/lib/api-client";
-import { useListAdmins, useCreateAdmin, useSetAdminActive, useSetAdminRole, useDeleteAdmin, type AdminRecord } from "@/lib/adminApi";
-import { Plus, Loader2, ShieldCheck, MoreVertical } from "lucide-react";
+import { useListAdmins, useCreateAdmin, useSetAdminActive, useSetAdminRole, useDeleteAdmin, useResetAdminPassword, type AdminRecord } from "@/lib/adminApi";
+import { Plus, Loader2, ShieldCheck, MoreVertical, KeyRound } from "lucide-react";
 import { format } from "date-fns";
 
 const createAdminSchema = z.object({
@@ -53,9 +53,13 @@ export default function Users() {
   const setActiveMutation = useSetAdminActive();
   const setRoleMutation = useSetAdminRole();
   const deleteAdminMutation = useDeleteAdmin();
+  const resetPasswordMutation = useResetAdminPassword();
   const { toast } = useToast();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<AdminRecord | null>(null);
+  const [resetPasswordTarget, setResetPasswordTarget] = useState<AdminRecord | null>(null);
+  const [newPasswordValue, setNewPasswordValue] = useState("");
+  const [resetPasswordError, setResetPasswordError] = useState<string | undefined>(undefined);
 
   const form = useForm<z.infer<typeof createAdminSchema>>({
     resolver: zodResolver(createAdminSchema),
@@ -113,6 +117,36 @@ export default function Users() {
         setDeleteTarget(null);
       },
     });
+  };
+
+  const openResetPassword = (admin: AdminRecord) => {
+    setNewPasswordValue("");
+    setResetPasswordError(undefined);
+    setResetPasswordTarget(admin);
+  };
+
+  const confirmResetPassword = () => {
+    if (!resetPasswordTarget) return;
+    if (newPasswordValue.length < 8) {
+      setResetPasswordError("New password must be at least 8 characters");
+      return;
+    }
+    resetPasswordMutation.mutate(
+      { id: resetPasswordTarget.id, newPassword: newPasswordValue },
+      {
+        onSuccess: () => {
+          toast({
+            title: "Password reset",
+            description: `${resetPasswordTarget.email} must set a new password from this one on their next sign-in. Share it with them directly.`,
+          });
+          setResetPasswordTarget(null);
+          setNewPasswordValue("");
+        },
+        onError: (error: unknown) => {
+          setResetPasswordError(apiErrorMessage(error) ?? "Something went wrong");
+        },
+      },
+    );
   };
 
   return (
@@ -257,7 +291,18 @@ export default function Users() {
                         <TableCell>{format(new Date(admin.createdAt), "PP")}</TableCell>
                         <TableCell className="text-right">
                           {isSelf ? (
-                            <span className="text-xs text-muted-foreground">No actions on your own account</span>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="outline" size="sm">
+                                  <MoreVertical className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => openResetPassword(admin)}>
+                                  Reset My Password
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           ) : (
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
@@ -277,6 +322,9 @@ export default function Users() {
                                   onClick={() => toggleActive(admin)}
                                 >
                                   {admin.isActive ? "Deactivate" : "Reactivate"}
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => openResetPassword(admin)}>
+                                  Reset Password
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
                                   className="text-destructive focus:text-destructive"
@@ -326,6 +374,54 @@ export default function Users() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog
+        open={!!resetPasswordTarget}
+        onOpenChange={(open) => {
+          if (!open) {
+            setResetPasswordTarget(null);
+            setNewPasswordValue("");
+            setResetPasswordError(undefined);
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reset password for {resetPasswordTarget?.email}</DialogTitle>
+            <DialogDescription>
+              Set a new password and share it with them directly. They will be required to set
+              their own password the next time they sign in.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Input
+              type="text"
+              placeholder="At least 8 characters"
+              value={newPasswordValue}
+              onChange={(e) => {
+                setNewPasswordValue(e.target.value);
+                setResetPasswordError(undefined);
+              }}
+            />
+            {resetPasswordError && <p className="text-sm font-medium text-destructive">{resetPasswordError}</p>}
+          </div>
+          <DialogFooter>
+            <Button onClick={confirmResetPassword} disabled={resetPasswordMutation.isPending}>
+              {resetPasswordMutation.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Resetting...
+                </>
+              ) : (
+                <>
+                  <KeyRound className="mr-2 h-4 w-4" />
+                  Reset Password
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </AppLayout>
   );
 }

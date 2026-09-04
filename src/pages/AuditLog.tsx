@@ -25,6 +25,7 @@ const ACTION_LABELS: Record<string, string> = {
   "admin.create": "Created admin",
   "admin.status_change": "Changed admin status",
   "admin.role_change": "Changed admin role",
+  "admin.reset_password": "Reset admin password",
   "admin.delete": "Deleted admin",
   "newsletter.upload": "Uploaded newsletter",
   "newsletter.delete": "Deleted newsletter",
@@ -61,6 +62,8 @@ function detailsFor(entry: AuditLogEntry): string {
         return `${meta.fromRole} → ${meta.toRole}`;
       case "admin.create":
         return `Role: ${meta.role}`;
+      case "admin.reset_password":
+        return meta.resetOwnAccount ? "Reset their own password" : "Reset another admin's password";
       case "employee.bulk_delete":
         return `${meta.deletedCount ?? 0} removed`;
       default:

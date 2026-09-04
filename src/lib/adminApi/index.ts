@@ -81,6 +81,20 @@ export function useDeleteAdmin() {
   });
 }
 
+export function useResetAdminPassword() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, newPassword }: { id: number; newPassword: string }) =>
+      customFetch<AdminRecord>(`/api/admins/${id}/reset-password`, {
+        method: "POST",
+        body: JSON.stringify({ newPassword }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: getListAdminsQueryKey() });
+    },
+  });
+}
+
 export function useChangePassword() {
   return useMutation({
     mutationFn: (data: { currentPassword: string; newPassword: string }) =>

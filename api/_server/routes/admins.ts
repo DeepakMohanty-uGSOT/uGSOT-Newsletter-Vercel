@@ -183,6 +183,51 @@ router.patch("/admins/:id/role", requireAuth, requireSuperAdmin, async (req, res
   res.json(updated);
 });
 
+// A super admin can reset the password for any admin account, including
+// their own (e.g. they forgot it, or just want to rotate it) â unlike the
+// other admin-management actions above, this one is deliberately allowed
+// on your own account. The target is forced to set their own real
+// password on next login, same as a freshly created admin.
+router.post("/admins/:id/reset-password", requireAuth, requireSuperAdmin, async (req, res): Promise<void> => {
+  const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const id = parseInt(raw, 10);
+  if (isNaN(id)) {
+    res.status(400).json({ error: "Invalid ID" });
+    return;
+  }
+
+  const { newPassword } = req.body as { newPassword?: string };
+  if (!newPassword || newPassword.length < 8) {
+    res.status(400).json({ error: "New password must be at least 8 characters" });
+    return;
+  }
+
+  const [target] = await db.select().from(adminsTable).where(eq(adminsTable.id, id));
+  if (!target) {
+    res.status(404).json({ error: "Admin not found" });
+    return;
+  }
+
+  const passwordHash = await bcrypt.hash(newPassword, 10);
+  const isSelf = getRequesterId(req) === id;
+
+  const [updated] = await db
+    .update(adminsTable)
+    .set({ passwordHash, mustChangePassword: true })
+    .where(eq(adminsTable.id, id))
+    .returning(ADMIN_PUBLIC_COLUMNS);
+
+  req.log.info({ targetEmail: target.email, by: getRequesterEmail(req), isSelf }, "Admin password reset");
+  await logAudit(req, {
+    action: "admin.reset_password",
+    targetType: "admin",
+    targetId: id,
+    targetLabel: target.email,
+    metadata: { resetOwnAccount: isSelf },
+  });
+  res.json(updated);
+});
+
 router.delete("/admins/:id", requireAuth, requireSuperAdmin, async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(raw, 10);
