@@ -16,7 +16,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
-import { Trash2, Send, Download, Plus, Loader2, RotateCcw, Search, Users } from "lucide-react";
+import { Trash2, Send, Download, Plus, Loader2, RotateCcw, Search, Users, History, Undo2 } from "lucide-react";
 import { format } from "date-fns";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -26,6 +26,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useUploadNewsletter } from "@/hooks/use-upload";
 import { useListThemes } from "@/lib/themeApi";
+import { useListDeletedNewsletters, useRestoreNewsletter, usePermanentlyDeleteNewsletter, getListDeletedNewslettersQueryKey } from "@/lib/newsletterTrashApi";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 async function fetchAllFailedEmails(newsletterId: number): Promise<string[]> {
@@ -57,6 +58,14 @@ export default function Newsletters() {
 
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [newsletterToDelete, setNewsletterToDelete] = useState<number | null>(null);
+
+  const [trashOpen, setTrashOpen] = useState(false);
+  const [trashPage, setTrashPage] = useState(1);
+  const { data: trashData, isLoading: isTrashLoading } = useListDeletedNewsletters(trashPage, trashOpen);
+  const restoreMutation = useRestoreNewsletter();
+  const permanentDeleteMutation = usePermanentlyDeleteNewsletter();
+  const [restoringId, setRestoringId] = useState<number | null>(null);
+  const [permanentDeleteTarget, setPermanentDeleteTarget] = useState<number | null>(null);
 
   const [sendConfirmOpen, setSendConfirmOpen] = useState(false);
   const [newsletterToSend, setNewsletterToSend] = useState<number | null>(null);
@@ -117,12 +126,38 @@ export default function Newsletters() {
     });
   };
 
+  const handleRestore = async (id: number) => {
+    setRestoringId(id);
+    try {
+      await restoreMutation.mutateAsync(id);
+      toast({ title: "Newsletter restored" });
+      queryClient.invalidateQueries({ queryKey: getListNewslettersQueryKey() });
+      queryClient.invalidateQueries({ queryKey: getListDeletedNewslettersQueryKey(trashPage) });
+    } catch (err: any) {
+      toast({ variant: "destructive", title: "Failed to restore newsletter", description: err?.message });
+    } finally {
+      setRestoringId(null);
+    }
+  };
+
+  const handlePermanentDelete = async () => {
+    if (!permanentDeleteTarget) return;
+    try {
+      await permanentDeleteMutation.mutateAsync(permanentDeleteTarget);
+      toast({ title: "Newsletter permanently deleted" });
+      queryClient.invalidateQueries({ queryKey: getListDeletedNewslettersQueryKey(trashPage) });
+      setPermanentDeleteTarget(null);
+    } catch (err: any) {
+      toast({ variant: "destructive", title: "Failed to permanently delete newsletter", description: err?.message });
+    }
+  };
+
   const handleDelete = () => {
     if (!newsletterToDelete) return;
     
     deleteMutation.mutate({ id: newsletterToDelete }, {
       onSuccess: () => {
-        toast({ title: "Newsletter deleted successfully" });
+        toast({ title: "Moved to Recently Deleted", description: "You can restore it within 30 days." });
         setDeleteConfirmOpen(false);
         setNewsletterToDelete(null);
         queryClient.invalidateQueries({ queryKey: getListNewslettersQueryKey() });
@@ -227,7 +262,13 @@ export default function Newsletters() {
           <h1 className="text-3xl font-bold tracking-tight">Newsletters</h1>
           <p className="text-muted-foreground mt-1">Manage and distribute corporate newsletters.</p>
         </div>
-        
+
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setTrashOpen(true)}>
+            <History className="mr-2 h-4 w-4" />
+            Recently Deleted
+          </Button>
+
         <Dialog open={uploadOpen} onOpenChange={setUploadOpen}>
           <DialogTrigger asChild>
             <Button>
@@ -303,6 +344,7 @@ export default function Newsletters() {
             </form>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
       <Card>
@@ -449,13 +491,121 @@ export default function Newsletters() {
           <DialogHeader>
             <DialogTitle>Delete Newsletter</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete this newsletter? This action cannot be undone.
+              This moves the newsletter to Recently Deleted, where it can be restored within 30 days before it's permanently removed.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDeleteConfirmOpen(false)}>Cancel</Button>
             <Button variant="destructive" onClick={handleDelete} disabled={deleteMutation.isPending}>
               {deleteMutation.isPending ? "Deleting..." : "Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={trashOpen} onOpenChange={(open) => { setTrashOpen(open); if (!open) setTrashPage(1); }}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Recently Deleted</DialogTitle>
+            <DialogDescription>
+              Newsletters deleted within the last 30 days. Restore them, or permanently delete them right away.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="border rounded-md max-h-96 overflow-y-auto divide-y">
+            {isTrashLoading ? (
+              <div className="p-4 text-sm text-muted-foreground">Loading...</div>
+            ) : !trashData?.newsletters?.length ? (
+              <div className="p-8 text-sm text-muted-foreground text-center">Nothing in the trash.</div>
+            ) : (
+              trashData.newsletters.map((nl) => {
+                const daysLeft = Math.max(
+                  0,
+                  30 - Math.floor((Date.now() - new Date(nl.deletedAt).getTime()) / (24 * 60 * 60 * 1000))
+                );
+                return (
+                  <div key={nl.id} className="flex items-center justify-between gap-3 px-4 py-3">
+                    <div className="min-w-0">
+                      <div className="font-medium truncate">{nl.title}</div>
+                      <div className="text-xs text-muted-foreground truncate">
+                        Deleted {format(new Date(nl.deletedAt), "MMM d, yyyy HH:mm")}
+                        {nl.deletedByAdminEmail ? ` by ${nl.deletedByAdminEmail}` : ""}
+                        {" · "}
+                        {daysLeft > 0 ? `${daysLeft} day${daysLeft === 1 ? "" : "s"} left` : "purging soon"}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleRestore(nl.id)}
+                        disabled={restoringId === nl.id}
+                      >
+                        {restoringId === nl.id ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
+                        ) : (
+                          <Undo2 className="h-3.5 w-3.5 mr-1.5" />
+                        )}
+                        Restore
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                        onClick={() => setPermanentDeleteTarget(nl.id)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+                        Delete Forever
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          {trashData && trashData.total > trashData.pageSize && (
+            <div className="flex items-center justify-between pt-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={trashPage === 1}
+                onClick={() => setTrashPage((p) => Math.max(1, p - 1))}
+              >
+                Previous
+              </Button>
+              <span className="text-xs text-muted-foreground">
+                Page {trashPage} of {Math.ceil(trashData.total / trashData.pageSize)}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={trashPage * trashData.pageSize >= trashData.total}
+                onClick={() => setTrashPage((p) => p + 1)}
+              >
+                Next
+              </Button>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setTrashOpen(false)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!permanentDeleteTarget} onOpenChange={(open) => { if (!open) setPermanentDeleteTarget(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Forever</DialogTitle>
+            <DialogDescription>
+              This permanently deletes this newsletter and its PDF. This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPermanentDeleteTarget(null)}>Cancel</Button>
+            <Button variant="destructive" onClick={handlePermanentDelete} disabled={permanentDeleteMutation.isPending}>
+              {permanentDeleteMutation.isPending ? "Deleting..." : "Delete Forever"}
             </Button>
           </DialogFooter>
         </DialogContent>

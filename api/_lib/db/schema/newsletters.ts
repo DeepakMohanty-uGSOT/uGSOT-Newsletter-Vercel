@@ -18,6 +18,12 @@ export const newslettersTable = pgTable("newsletters", {
   // upload time, so editing that theme afterwards never changes how an
   // already-uploaded newsletter renders in Preview or on resend.
   themeSnapshot: text("theme_snapshot"),
+  // Soft delete: set instead of removing the row, so a deleted newsletter
+  // can be restored later ("Recently Deleted", 30-day retention). The PDF
+  // stays in Supabase storage until the row is restored or permanently
+  // purged, so restoring works even after the PDF-attached email was sent.
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  deletedByAdminEmail: text("deleted_by_admin_email"),
 });
 
 // Hand-written rather than `createInsertSchema(newslettersTable)` — see

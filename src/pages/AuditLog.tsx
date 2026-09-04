@@ -19,8 +19,11 @@ const ACTION_LABELS: Record<string, string> = {
   "theme.delete": "Deleted theme",
   "employee.create": "Added employee",
   "employee.update": "Updated employee",
-  "employee.delete": "Removed employee",
+  "employee.delete": "Moved employee to trash",
+  "employee.restore": "Restored employee from trash",
+  "employee.delete_permanent": "Permanently deleted employee",
   "employee.bulk_delete": "Bulk-removed employees",
+  "employee.delete_all": "Removed all employees",
   "employee.bulk_import": "Bulk-imported employees",
   "admin.create": "Created admin",
   "admin.status_change": "Changed admin status",
@@ -28,7 +31,9 @@ const ACTION_LABELS: Record<string, string> = {
   "admin.reset_password": "Reset admin password",
   "admin.delete": "Deleted admin",
   "newsletter.upload": "Uploaded newsletter",
-  "newsletter.delete": "Deleted newsletter",
+  "newsletter.delete": "Moved newsletter to trash",
+  "newsletter.restore": "Restored newsletter from trash",
+  "newsletter.delete_permanent": "Permanently deleted newsletter",
   "newsletter.send": "Sent newsletter",
 };
 

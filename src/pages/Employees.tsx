@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
-import { Trash2, Search, Loader2, FileUp, AlertTriangle, Plus, Pencil, Download, MoreVertical } from "lucide-react";
+import { Trash2, Search, Loader2, FileUp, AlertTriangle, Plus, Pencil, Download, MoreVertical, History, Undo2 } from "lucide-react";
 import { format } from "date-fns";
 import { useUploadEmployeeFile } from "@/hooks/use-upload";
 import {
@@ -19,6 +19,9 @@ import {
   useBulkDeleteEmployees,
   useDeleteAllEmployees,
   useExportEmployees,
+  useListDeletedEmployees,
+  useRestoreEmployee,
+  usePermanentlyDeleteEmployee,
   type EmployeeInput,
 } from "@/hooks/use-employee-actions";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -46,6 +49,13 @@ export default function Employees() {
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false);
   const [deleteAllConfirmOpen, setDeleteAllConfirmOpen] = useState(false);
+
+  const [trashOpen, setTrashOpen] = useState(false);
+  const { data: trashData, isLoading: isTrashLoading, page: trashPage, fetchPage: fetchTrashPage } = useListDeletedEmployees();
+  const { restoreEmployee, isRestoring } = useRestoreEmployee();
+  const { permanentlyDeleteEmployee, isDeleting: isPermanentlyDeleting } = usePermanentlyDeleteEmployee();
+  const [restoringId, setRestoringId] = useState<number | null>(null);
+  const [permanentDeleteTarget, setPermanentDeleteTarget] = useState<number | null>(null);
 
   const [addOpen, setAddOpen] = useState(false);
   const [addForm, setAddForm] = useState<EmployeeInput>({ employeeName: "", employeeEmail: "" });
@@ -135,7 +145,7 @@ export default function Employees() {
 
     deleteMutation.mutate({ id: employeeToDelete }, {
       onSuccess: () => {
-        toast({ title: "Employee deleted successfully" });
+        toast({ title: "Moved to Recently Deleted", description: "You can restore it within 30 days." });
         setDeleteConfirmOpen(false);
         setEmployeeToDelete(null);
         queryClient.invalidateQueries({
@@ -170,7 +180,7 @@ export default function Employees() {
   const handleBulkDelete = async () => {
     try {
       const result = await bulkDeleteEmployees(selectedIds);
-      toast({ title: "Employees deleted", description: `Deleted ${result.deletedCount} employee(s).` });
+      toast({ title: "Moved to Recently Deleted", description: `${result.deletedCount} employee(s) can be restored within 30 days.` });
       setSelectedIds([]);
       setBulkDeleteConfirmOpen(false);
     } catch (err) {
@@ -185,13 +195,51 @@ export default function Employees() {
   const handleDeleteAll = async () => {
     try {
       const result = await deleteAllEmployees();
-      toast({ title: "All employees deleted", description: `Deleted ${result.deletedCount} employee(s).` });
+      toast({ title: "Moved to Recently Deleted", description: `${result.deletedCount} employee(s) can be restored within 30 days.` });
       setSelectedIds([]);
       setDeleteAllConfirmOpen(false);
     } catch (err) {
       toast({
         variant: "destructive",
         title: "Failed to delete all employees",
+        description: err instanceof Error ? err.message : undefined,
+      });
+    }
+  };
+
+  const openTrash = () => {
+    setTrashOpen(true);
+    fetchTrashPage(1);
+  };
+
+  const handleRestoreEmployee = async (id: number) => {
+    setRestoringId(id);
+    try {
+      await restoreEmployee(id);
+      toast({ title: "Employee restored" });
+      fetchTrashPage(trashPage);
+    } catch (err) {
+      toast({
+        variant: "destructive",
+        title: "Failed to restore employee",
+        description: err instanceof Error ? err.message : undefined,
+      });
+    } finally {
+      setRestoringId(null);
+    }
+  };
+
+  const handlePermanentDeleteEmployee = async () => {
+    if (!permanentDeleteTarget) return;
+    try {
+      await permanentlyDeleteEmployee(permanentDeleteTarget);
+      toast({ title: "Employee permanently deleted" });
+      fetchTrashPage(trashPage);
+      setPermanentDeleteTarget(null);
+    } catch (err) {
+      toast({
+        variant: "destructive",
+        title: "Failed to permanently delete employee",
         description: err instanceof Error ? err.message : undefined,
       });
     }
@@ -284,6 +332,10 @@ export default function Employees() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={openTrash}>
+                <History className="h-4 w-4" />
+                Recently Deleted
+              </DropdownMenuItem>
               <DropdownMenuItem
                 className="text-destructive focus:text-destructive focus:bg-destructive/10"
                 disabled={!data || data.total === 0}
@@ -423,7 +475,7 @@ export default function Employees() {
           <DialogHeader>
             <DialogTitle>Delete Employee</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete this employee? This action cannot be undone.
+              This moves the employee to Recently Deleted, where they can be restored within 30 days before being permanently removed.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -444,7 +496,7 @@ export default function Employees() {
             </div>
             <DialogTitle className="pt-3">Delete {selectedIds.length} employee{selectedIds.length === 1 ? "" : "s"}?</DialogTitle>
             <DialogDescription>
-              This will permanently delete the selected employee record(s). This action cannot be undone.
+              This moves the selected employee record(s) to Recently Deleted, recoverable within 30 days.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="pt-2">
@@ -465,7 +517,7 @@ export default function Employees() {
             </div>
             <DialogTitle className="pt-3">Delete all {data?.total ?? 0} employees?</DialogTitle>
             <DialogDescription>
-              This permanently deletes every employee record, not just this page, including any not currently shown by your search. This action cannot be undone.
+              This moves every employee record (not just this page, including any not currently shown by your search) to Recently Deleted, recoverable within 30 days.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="pt-2">
@@ -486,12 +538,121 @@ export default function Employees() {
             </div>
             <DialogTitle className="pt-3">Replace all employees?</DialogTitle>
             <DialogDescription>
-              This will permanently delete the current employee list and replace it with the contents of the file you upload. This action cannot be undone.
+              This moves the current employee list to Recently Deleted (recoverable within 30 days) and replaces it with the contents of the file you upload.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="pt-2">
             <Button variant="outline" onClick={() => setUploadConfirmOpen(false)}>Cancel</Button>
             <Button variant="destructive" onClick={handleConfirmUpload}>Yes, Upload</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Recently Deleted */}
+      <Dialog open={trashOpen} onOpenChange={setTrashOpen}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Recently Deleted</DialogTitle>
+            <DialogDescription>
+              Employees deleted within the last 30 days. Restore them, or permanently delete them right away.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="border rounded-md max-h-96 overflow-y-auto divide-y">
+            {isTrashLoading ? (
+              <div className="p-4 text-sm text-muted-foreground">Loading...</div>
+            ) : !trashData?.employees?.length ? (
+              <div className="p-8 text-sm text-muted-foreground text-center">Nothing in the trash.</div>
+            ) : (
+              trashData.employees.map((emp) => {
+                const daysLeft = Math.max(
+                  0,
+                  30 - Math.floor((Date.now() - new Date(emp.deletedAt).getTime()) / (24 * 60 * 60 * 1000))
+                );
+                return (
+                  <div key={emp.id} className="flex items-center justify-between gap-3 px-4 py-3">
+                    <div className="min-w-0">
+                      <div className="font-medium truncate">{emp.employeeName}</div>
+                      <div className="text-xs text-muted-foreground truncate">
+                        {emp.employeeEmail} · Deleted {format(new Date(emp.deletedAt), "MMM d, yyyy HH:mm")}
+                        {emp.deletedByAdminEmail ? ` by ${emp.deletedByAdminEmail}` : ""}
+                        {" · "}
+                        {daysLeft > 0 ? `${daysLeft} day${daysLeft === 1 ? "" : "s"} left` : "purging soon"}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleRestoreEmployee(emp.id)}
+                        disabled={restoringId === emp.id}
+                      >
+                        {restoringId === emp.id ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
+                        ) : (
+                          <Undo2 className="h-3.5 w-3.5 mr-1.5" />
+                        )}
+                        Restore
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                        onClick={() => setPermanentDeleteTarget(emp.id)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+                        Delete Forever
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          {trashData && trashData.total > trashData.pageSize && (
+            <div className="flex items-center justify-between pt-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={trashPage === 1}
+                onClick={() => fetchTrashPage(Math.max(1, trashPage - 1))}
+              >
+                Previous
+              </Button>
+              <span className="text-xs text-muted-foreground">
+                Page {trashPage} of {Math.ceil(trashData.total / trashData.pageSize)}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={trashPage * trashData.pageSize >= trashData.total}
+                onClick={() => fetchTrashPage(trashPage + 1)}
+              >
+                Next
+              </Button>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setTrashOpen(false)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!permanentDeleteTarget} onOpenChange={(open) => { if (!open) setPermanentDeleteTarget(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Forever</DialogTitle>
+            <DialogDescription>
+              This permanently deletes this employee record. This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPermanentDeleteTarget(null)}>Cancel</Button>
+            <Button variant="destructive" onClick={handlePermanentDeleteEmployee} disabled={isPermanentlyDeleting}>
+              {isPermanentlyDeleting ? "Deleting..." : "Delete Forever"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

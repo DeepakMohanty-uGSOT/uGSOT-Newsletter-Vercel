@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import multer from "multer";
 import { createClient } from "@supabase/supabase-js";
 import { db, newslettersTable, employeesTable, emailLogsTable, themesTable } from "../../_lib/db/index.js";
-import { eq, count, sql, desc } from "drizzle-orm";
+import { eq, count, sql, desc, and, isNull, lt } from "drizzle-orm";
 import { requireAuth } from "../middlewares/requireAuth.js";
 import { logAudit } from "../lib/auditLog.js";
 import { logger } from "../lib/logger.js";
@@ -432,7 +432,8 @@ async function sendNewsletterEmails(
       employeeName: email.split("@")[0],
     }));
   } else {
-    recipients = await db.select().from(employeesTable);
+    // Exclude soft-deleted employees (trash) from live sends.
+    recipients = await db.select().from(employeesTable).where(isNull(employeesTable.deletedAt));
   }
 
   let sent = 0;
@@ -602,11 +603,12 @@ router.get("/newsletters", requireAuth, async (req, res): Promise<void> => {
         })
         .from(newslettersTable)
         .leftJoin(emailLogsTable, eq(newslettersTable.id, emailLogsTable.newsletterId))
+        .where(isNull(newslettersTable.deletedAt))
         .groupBy(newslettersTable.id)
         .orderBy(desc(newslettersTable.uploadedAt))
         .limit(size)
         .offset(offset),
-      db.select({ count: count() }).from(newslettersTable),
+      db.select({ count: count() }).from(newslettersTable).where(isNull(newslettersTable.deletedAt)),
     ]);
 
     res.json({ newsletters, total: Number(total), page: pageNum, pageSize: size });
@@ -695,31 +697,139 @@ router.get("/newsletters/:id", requireAuth, async (req, res): Promise<void> => {
     })
     .from(newslettersTable)
     .leftJoin(emailLogsTable, eq(newslettersTable.id, emailLogsTable.newsletterId))
-    .where(eq(newslettersTable.id, id))
+    .where(and(eq(newslettersTable.id, id), isNull(newslettersTable.deletedAt)))
     .groupBy(newslettersTable.id);
 
   if (!row) { res.status(404).json({ error: "Newsletter not found" }); return; }
   res.json(row);
 });
 
+// Soft delete -- moves the newsletter to "Recently Deleted" instead of
+// removing it immediately. The PDF is left in Supabase storage untouched
+// so restoring it later (or a scheduled/queued send referencing it) still
+// works; storage cleanup only happens on permanent delete/purge.
 router.delete("/newsletters/:id", requireAuth, async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(raw, 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
 
-  const [deleted] = await db.delete(newslettersTable).where(eq(newslettersTable.id, id)).returning();
+  const senderEmail = (req as { adminEmail?: string }).adminEmail ?? null;
+
+  const [deleted] = await db
+    .update(newslettersTable)
+    .set({ deletedAt: new Date(), deletedByAdminEmail: senderEmail })
+    .where(and(eq(newslettersTable.id, id), isNull(newslettersTable.deletedAt)))
+    .returning();
   if (!deleted) { res.status(404).json({ error: "Newsletter not found" }); return; }
 
   await logAudit(req, { action: "newsletter.delete", targetType: "newsletter", targetId: id, targetLabel: deleted.title });
 
+  res.json({ message: "Newsletter moved to Recently Deleted" });
+});
+
+// Deletes anything that's been sitting in the trash for 30+ days, cleaning
+// up its PDF from Supabase storage first. Called opportunistically at the
+// top of the trash listing endpoint rather than on a schedule, so it needs
+// no cron infrastructure.
+async function purgeExpiredDeletedNewsletters(): Promise<void> {
+  const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const expired = await db
+    .select({ id: newslettersTable.id, pdfUrl: newslettersTable.pdfUrl })
+    .from(newslettersTable)
+    .where(and(sql`${newslettersTable.deletedAt} IS NOT NULL`, lt(newslettersTable.deletedAt, cutoff)));
+
+  for (const nl of expired) {
+    try {
+      const storagePath = normalizeStoragePath(nl.pdfUrl);
+      await supabase.storage.from(SUPABASE_STORAGE_BUCKET).remove([storagePath]);
+    } catch (err) {
+      logger.warn({ err, newsletterId: nl.id }, "Failed to remove PDF from storage while purging expired trash");
+    }
+    await db.delete(newslettersTable).where(eq(newslettersTable.id, nl.id));
+  }
+}
+
+// Lists newsletters currently in the trash (deleted within the last 30
+// days -- older ones are purged automatically before the list is built).
+router.get("/newsletters/deleted", requireAuth, async (req, res): Promise<void> => {
   try {
-    const storagePath = normalizeStoragePath(deleted.pdfUrl);
+    await purgeExpiredDeletedNewsletters();
+
+    const { page = "1", pageSize = "20" } = req.query as Record<string, string>;
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const size = Math.min(100, Math.max(1, parseInt(pageSize, 10) || 20));
+    const offset = (pageNum - 1) * size;
+
+    const whereClause = sql`${newslettersTable.deletedAt} IS NOT NULL`;
+
+    const [newsletters, [{ count: total }]] = await Promise.all([
+      db
+        .select({
+          id: newslettersTable.id,
+          title: newslettersTable.title,
+          topic: newslettersTable.topic,
+          uploadedAt: newslettersTable.uploadedAt,
+          deletedAt: newslettersTable.deletedAt,
+          deletedByAdminEmail: newslettersTable.deletedByAdminEmail,
+        })
+        .from(newslettersTable)
+        .where(whereClause)
+        .orderBy(desc(newslettersTable.deletedAt))
+        .limit(size)
+        .offset(offset),
+      db.select({ count: count() }).from(newslettersTable).where(whereClause),
+    ]);
+
+    res.json({ newsletters, total: Number(total), page: pageNum, pageSize: size });
+  } catch (err) {
+    req.log.error({ err }, "Failed to get deleted newsletters");
+    res.status(500).json({ error: "Failed to get deleted newsletters" });
+  }
+});
+
+router.post("/newsletters/:id/restore", requireAuth, async (req, res): Promise<void> => {
+  const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const id = parseInt(raw, 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
+
+  const [restored] = await db
+    .update(newslettersTable)
+    .set({ deletedAt: null, deletedByAdminEmail: null })
+    .where(and(eq(newslettersTable.id, id), sql`${newslettersTable.deletedAt} IS NOT NULL`))
+    .returning();
+  if (!restored) { res.status(404).json({ error: "Newsletter not found in Recently Deleted" }); return; }
+
+  await logAudit(req, { action: "newsletter.restore", targetType: "newsletter", targetId: id, targetLabel: restored.title });
+
+  res.json({ message: "Newsletter restored" });
+});
+
+// Immediately and permanently deletes a newsletter -- only allowed while
+// it's already in the trash, as a safety net against skipping the 30-day
+// recovery window by accident.
+router.delete("/newsletters/:id/permanent", requireAuth, async (req, res): Promise<void> => {
+  const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const id = parseInt(raw, 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
+
+  const [existing] = await db.select().from(newslettersTable).where(eq(newslettersTable.id, id));
+  if (!existing) { res.status(404).json({ error: "Newsletter not found" }); return; }
+  if (!existing.deletedAt) {
+    res.status(409).json({ error: "Move this newsletter to Recently Deleted before permanently deleting it" });
+    return;
+  }
+
+  await db.delete(newslettersTable).where(eq(newslettersTable.id, id));
+  await logAudit(req, { action: "newsletter.delete_permanent", targetType: "newsletter", targetId: id, targetLabel: existing.title });
+
+  try {
+    const storagePath = normalizeStoragePath(existing.pdfUrl);
     await supabase.storage.from(SUPABASE_STORAGE_BUCKET).remove([storagePath]);
   } catch (err) {
     req.log.warn({ err }, "Failed to remove PDF from Supabase storage");
   }
 
-  res.json({ message: "Newsletter deleted" });
+  res.json({ message: "Newsletter permanently deleted" });
 });
 
 router.post("/newsletters/:id/send", requireAuth, async (req, res): Promise<void> => {

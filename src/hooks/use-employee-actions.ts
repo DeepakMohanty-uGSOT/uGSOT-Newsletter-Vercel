@@ -160,3 +160,93 @@ export function useExportEmployees() {
 
   return { exportEmployees, isExporting };
 }
+
+// ---------------------------------------------------------------------------
+// Recently Deleted (soft delete)
+// ---------------------------------------------------------------------------
+
+export interface DeletedEmployee {
+  id: number;
+  employeeName: string;
+  employeeEmail: string;
+  createdAt: string;
+  deletedAt: string;
+  deletedByAdminEmail: string | null;
+}
+
+export interface ListDeletedEmployeesResponse {
+  employees: DeletedEmployee[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+export function useListDeletedEmployees() {
+  const [data, setData] = useState<ListDeletedEmployeesResponse | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [page, setPage] = useState(1);
+
+  const fetchPage = async (targetPage: number) => {
+    setIsLoading(true);
+    try {
+      const res = await fetch(`/api/employees/deleted?page=${targetPage}&pageSize=20`, {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error(await parseErrorMessage(res, "Failed to load Recently Deleted"));
+      const json = (await res.json()) as ListDeletedEmployeesResponse;
+      setData(json);
+      setPage(targetPage);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return { data, isLoading, page, fetchPage };
+}
+
+export function useRestoreEmployee() {
+  const [isRestoring, setIsRestoring] = useState(false);
+  const queryClient = useQueryClient();
+
+  const restoreEmployee = async (id: number) => {
+    setIsRestoring(true);
+    try {
+      const res = await fetch(`/api/employees/${id}/restore`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        throw new Error(await parseErrorMessage(res, "Failed to restore employee"));
+      }
+      const data = await res.json();
+      invalidateEmployeeQueries(queryClient);
+      return data as { message: string };
+    } finally {
+      setIsRestoring(false);
+    }
+  };
+
+  return { restoreEmployee, isRestoring };
+}
+
+export function usePermanentlyDeleteEmployee() {
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const permanentlyDeleteEmployee = async (id: number) => {
+    setIsDeleting(true);
+    try {
+      const res = await fetch(`/api/employees/${id}/permanent`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        throw new Error(await parseErrorMessage(res, "Failed to permanently delete employee"));
+      }
+      return (await res.json()) as { message: string };
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  return { permanentlyDeleteEmployee, isDeleting };
+}

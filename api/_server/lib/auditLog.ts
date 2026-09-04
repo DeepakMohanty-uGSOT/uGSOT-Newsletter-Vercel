@@ -26,8 +26,11 @@ export type AuditAction =
   | "employee.create"
   | "employee.update"
   | "employee.delete"
+  | "employee.restore"
+  | "employee.delete_permanent"
   | "employee.bulk_delete"
   | "employee.bulk_import"
+  | "employee.delete_all"
   | "admin.create"
   | "admin.status_change"
   | "admin.role_change"
@@ -35,6 +38,8 @@ export type AuditAction =
   | "admin.delete"
   | "newsletter.upload"
   | "newsletter.delete"
+  | "newsletter.restore"
+  | "newsletter.delete_permanent"
   | "newsletter.send";
 
 export type AuditTargetType = "theme" | "employee" | "admin" | "newsletter";
